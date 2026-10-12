@@ -1,0 +1,11 @@
+"use strict";
+/* Trạng thái ứng dụng (S): dữ liệu đã tải + lựa chọn hiện tại của người dùng */
+/* ================= state ================= */
+const S = {
+  db:null, user:null, canEdit:false, conn:"wait",
+  staff:[], catalog:[], projects:[], weeks:[], feedback:[],
+  view: store("view") || "exec", period:"week", exPr:"Tất cả",
+  week: mondayOf(todayISO()),
+  me: store("me") || "",
+  typeFilter:"Đang triển khai", openProject:null, planSel:null, planQuery:"", dashQuery:""
+};

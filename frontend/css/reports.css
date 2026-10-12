@@ -1,0 +1,40 @@
+/* Trang Báo cáo */
+.rp-tabs{display:flex; gap:22px; border-bottom:1px solid var(--line); margin-bottom:16px}
+.rp-tabs button{all:unset; cursor:pointer; padding:9px 2px; font-size:14px; font-weight:600; color:var(--ink-3); border-bottom:2px solid transparent}
+.rp-tabs button[aria-selected="true"]{color:var(--teal-hover); border-bottom-color:var(--teal-hover)}
+.rp-tabs button:hover{color:var(--ink)}
+.rp-sec-h{background:var(--header-bg); color:#fff; font-weight:700; font-size:13px; padding:9px 14px; border-radius:8px 8px 0 0}
+.rp-sec .tbl-wrap{border:1px solid var(--line); border-top:0; border-radius:0 0 8px 8px}
+/* .rp-sec-xl ("Tình hình các dự án" ở Báo cáo tổng hợp dự án): không có thanh tiêu đề tối phía trên như
+   các .rp-sec khác (đã bỏ theo yêu cầu), nên bảng cần viền đủ 4 cạnh + bo đủ 4 góc thay vì chỉ bo dưới.
+   Đầu cột đồng bộ màu xanh lá nhạt giống bảng "Danh sách đầu việc" ở Báo cáo dự án (.rp-sec-grn bên dưới),
+   không còn tô vàng riêng nữa. */
+/* overflow:auto (không phải hidden) + min-width trên <table>: màn hình hẹp/zoom cao trước đây ép
+   table-layout:fixed co cột tới mức chữ vỡ từng ký tự, pill trạng thái (không word-wrap) tràn đè lên cột
+   bên cạnh. Giờ bảng giữ bề rộng tối thiểu hợp lý, hẹp hơn thì cuộn ngang thay vì co vỡ chữ. */
+.rp-sec-xl .tbl-wrap{border-top:1px solid var(--line); border-radius:8px; overflow:auto}
+.rp-sec-xl table{min-width:880px}
+/* white-space:normal + text-align:center để ghi đè mặc định (th{white-space:nowrap; text-align:left} ở
+   base.css) – cột hẹp mà nhãn dài (vd "Người phụ trách") cần xuống dòng thay vì tràn/đẩy lệch cột khác */
+.rp-sec-xl thead th{background:#D7E8C7; color:#1A1A1A; font-weight:700; border-bottom:1px solid #B9D6A0; text-align:center; white-space:normal; vertical-align:middle}
+.rp-sec-xl tbody td:first-child{text-align:center}
+/* Kẻ ô đủ 4 cạnh kiểu lưới Excel (mặc định .tbl-wrap chỉ có viền ngang dưới mỗi dòng, không có viền dọc).
+   overflow:hidden trên từng ô: nội dung không word-wrap (pill trạng thái) vẫn có thể rộng hơn vài px so
+   với cột ở màn hình hẹp dù đã có min-width – clip gọn trong đúng ô thay vì tràn đè sang cột bên cạnh. */
+.rp-sec-xl th,.rp-sec-xl td{border-right:1px solid var(--line-2); overflow:hidden}
+.rp-sec-xl th:last-child,.rp-sec-xl td:last-child{border-right:0}
+/* .rp-sec-grn ("Danh sách đầu việc" ở Báo cáo dự án): cùng kiểu không thanh tiêu đề + viền lưới như
+   .rp-sec-xl ở trên, chỉ khác màu đầu cột (xanh lá nhạt kiểu mẫu Excel của phòng thay vì vàng) */
+.rp-sec-grn .tbl-wrap{border-top:1px solid var(--line); border-radius:8px; overflow:auto}
+/* 1200px: đủ chỗ cho cột hẹp nhất (Deadline theo HĐ/Trạng thái thực hiện, không tự xuống dòng) không bị
+   overflow:hidden (bên dưới) cắt mất chữ – 960px trước đó vẫn còn cắt "20/10/2026" thành "20/10/202". */
+.rp-sec-grn table{min-width:1200px}
+.rp-sec-grn thead th{background:#D7E8C7; color:#1A1A1A; font-weight:700; border-bottom:1px solid #B9D6A0; text-align:center; white-space:normal; vertical-align:middle}
+.rp-sec-grn th,.rp-sec-grn td{border-right:1px solid var(--line-2); overflow:hidden}
+.rp-sec-grn th:last-child,.rp-sec-grn td:last-child{border-right:0}
+/* Toàn trang Báo cáo: cột số liệu căn giữa (không căn phải như mặc định .num ở base.css) */
+.rp-sec td.num,.rp-sec th.num{text-align:center}
+.rp-export{position:relative; display:inline-flex}
+.rp-export .tb-dropdown{top:calc(100% + 6px)}
+/* Ô chọn kỳ/tuần của Báo cáo giờ dùng chung .ex-wk/.ex-seg (dashboard.css) với Dashboard/Tổng quan dự án
+   – không còn .rp-weekbox riêng nữa. */

@@ -1,0 +1,212 @@
+"use strict";
+/* Màn hình: plan */
+/* ================= VIEW: plan ================= */
+/* Trưởng phòng sửa mọi dự án. Nhân viên sửa dự án do mình tạo, hoặc dự án mình là TM (phụ trách)/SE – kể cả thêm/sửa/xoá đầu việc.
+   Xoá cả dự án thì chặt hơn: chỉ người tạo hoặc trưởng phòng, xem canDeleteProject bên dưới. */
+function canManageProject(p){ return !!p && (S.canEdit || (!!S.user && (p.created_by === S.user.username || projectAssigned(p, S.user.staff_name)))); }
+function canDeleteProject(p){ return !!p && (S.canEdit || (!!S.user && p.created_by === S.user.username)); }
+/* Kế hoạch dự án giờ là 1 tab bên trong màn "Dự án" (gộp chung với Tổng quan, xem project-overview.js:
+   viewProject()) thay vì màn riêng – tách thanh công cụ (planToolbar, đặt lên hàng tiêu đề "Dự án" chung)
+   khỏi phần nội dung (planContent, đặt dưới hàng tab), đúng kiểu đã làm cho Báo cáo (reports.js). */
+function planToolbar(){
+  /* Trang này tự lọc theo "Tôi là" riêng (S.me đọc thẳng ở planContent(), không qua effectiveSimAs()),
+     nên ô kỳ và dropdown Cá nhân/Tổng thể ở đây CHƯA có tác dụng lọc gì, chỉ thêm cho đồng bộ giao diện
+     (đã xác nhận với người dùng), dùng chung S.week/S.period/periodInfo()/exnav/exper/exrefresh với
+     Dashboard/tab Tổng quan nên đổi kỳ ở đâu cũng khớp nơi khác. */
+  const kind = S.period || "week", per = periodInfo(S.week, kind);
+  return `<div class="ex-wk"><button data-act="exnav" data-d="-1" aria-label="Kỳ trước">‹</button><div class="lb">${esc(per.label)}</div><button data-act="exnav" data-d="1" aria-label="Kỳ sau">›</button></div>
+    <div class="ex-seg" role="group" aria-label="Kỳ báo cáo">${[["week","Tuần"],["month","Tháng"],["quarter","Quý"]].map(([k,l])=>`<button data-act="exper" data-k="${k}" aria-pressed="${kind===k}">${l}</button>`).join("")}</div>
+    ${scopeToggleHtml(true)}
+    <button class="btn icon" data-act="exrefresh" title="Làm mới" aria-label="Làm mới">${ICONS.refresh}</button>`;
+}
+function planContent(){
+  /* Góc nhìn theo "Tôi là": chọn một người (kể cả khi tài khoản là trưởng phòng) thì chỉ thấy dự án
+     người đó là TM (phụ trách) hoặc SE. Chọn "Tất cả" (chỉ trưởng phòng chọn được) hoặc chưa gắn với
+     ai thì thấy mọi dự án. Muốn xem toàn bộ dự án của phòng mà không đổi "Tôi là" thì sang tab Tổng quan. */
+  const ps = (!S.me || S.me==="__all__") ? M.projects : M.projects.filter(p=>projectAssigned(p, S.me));
+  const filt = S.typeFilter || "Tất cả";
+  const q = S.planQuery.toLowerCase();
+  const pool = ps.filter(p=>planMatchFilter(p, filt) && (!q || p.name.toLowerCase().includes(q)))
+    .sort((a,b)=>(b._stuck-a._stuck) || (b._late-a._late) || a.name.localeCompare(b.name,"vi"));
+  /* Lọc "Đang triển khai": chỉ tự mở dự án vướng nhiều nhất một lần đầu tiên; sau đó tôn trọng việc đóng/mở thủ công,
+     kể cả khi rời trang rồi quay lại (không tự mở lại mỗi lần vẽ lại trang) */
+  S.planAutoOpened = S.planAutoOpened || {};
+  if(filt==="Đang triển khai" && pool.length && !S.planAutoOpened[filt]){
+    if(!pool.some(p=>p.id===S.planSel)) S.planSel = pool[0].id;
+    S.planAutoOpened[filt] = true;
+  }
+  const chips = `<div class="chips" role="group" aria-label="Lọc dự án">${PLAN_FILTERS.map(f=>`<button class="chip-btn" data-act="tf" data-t="${esc(f.key)}" aria-pressed="${filt===f.key}">${esc(f.label)}</button>`).join("")}</div>`;
+  let h = `<div class="head-ctl" style="margin-bottom:16px">${chips}
+      <input class="inp" type="search" placeholder="Tìm dự án" style="width:180px" data-act="pq" value="${esc(S.planQuery)}" aria-label="Tìm dự án">
+      ${S.canEdit?'<button class="btn primary" data-act="newp">+ Dự án mới</button>':""}</div>`;
+  let body = "";
+  for(const t of TYPES){
+    const g = pool.filter(p=>p.type===t);
+    if(!g.length) continue;
+    body += `<section class="panel" style="margin-bottom:18px"><div class="panel-h"><h2>${typeDot(t)}${t} <span class="muted small">· ${g.length}</span></h2></div>`;
+    for(const p of g){
+      const open = S.planSel===p.id;
+      body += `<div class="prow" data-act="psel" data-id="${esc(p.id)}" role="button" tabindex="0" aria-expanded="${open}">
+        <div><div class="nm">${esc(p.name)}</div><div class="ow">${esc(p.owner||"Chưa có người phụ trách")}</div></div>
+        <div><div class="pct">${pct(p._prog)}</div><div class="pbar"><i style="width:${Math.round((p._prog||0)*100)}%"></i></div></div>
+        <div class="next small"><div class="muted">Mốc tiếp theo</div><div style="font-weight:600">${p._next?dmy(p._next):"–"}</div></div>
+        <div class="strip-cell">${strip(p, "plan", "planSel")}</div>
+        <div class="badges">${p._late?`<span class="pill bad">${p._late} quá hạn</span>`:""}${p._stuck?`<span class="pill warn">${p._stuck} vướng</span>`:""}${p._soon?`<span class="pill info">${p._soon} sắp hạn</span>`:""}${!(p.tasks||[]).length?'<span class="pill mute">Chưa có đầu việc</span>':!p._late&&!p._stuck&&!p._soon?'<span class="pill ok">Đúng tiến độ</span>':""}</div>
+      </div>`;
+      if(open) body += planDetail(p);
+    }
+    body += `</section>`;
+  }
+  if(!body) body = `<section class="panel"><div class="empty"><b>${ps.length?"Không có dự án nào trong bộ lọc này":"Chưa có dự án"}</b>${!ps.length ? (S.canEdit?`“${esc(S.me)}” chưa được gán làm TM hoặc SE của dự án nào. Đổi “Tôi là” thành “— Tất cả —” để xem hết, hoặc bấm “+ Dự án mới” để tạo.`:"Bạn chưa được gán làm TM hoặc SE của dự án nào. Xem toàn bộ dự án (chỉ xem) ở tab \"Tổng quan\".") : ""}</div></section>`;
+  return h + body;
+}
+/* Bảng đầu việc đầy đủ, xổ ra ngay dưới dòng dự án khi bấm vào (giống cách mở rộng ở Tổng quan dự án) */
+function planDetail(p){
+  let out = `<div class="pdetail">
+    <div class="row2" style="margin:12px 0 14px"><div><div class="small muted" style="margin-bottom:4px">Mốc hợp đồng</div><div class="note">${esc(p.milestones||"–")}</div></div>
+      <div><div class="small muted" style="margin-bottom:4px">Tình hình / vướng mắc chung</div><div class="note">${esc(p.situation||"–")}</div></div></div>
+    ${canManageProject(p)?`<div class="toolbar" style="margin-bottom:12px">${canDeleteProject(p)?`<button class="btn danger" data-act="delp" data-id="${esc(p.id)}">Xoá dự án</button>`:""}<button class="btn" data-act="editp" data-id="${esc(p.id)}">Sửa thông tin</button><button class="btn primary" data-act="addtask" data-id="${esc(p.id)}">+ Đầu việc</button></div>`:""}`;
+  const rows = planTreeRows(p, {cols:9});
+  out += `<div class="tbl-wrap panel"><table style="table-layout:fixed"><thead><tr><th style="width:22%">Đầu việc</th><th style="width:10%">Phụ trách</th><th style="width:10%">Thực hiện</th><th style="width:9%">Deadline HĐ</th><th style="width:6%; text-align:center">WL</th><th style="width:7%; text-align:center">Ưu tiên</th><th style="width:11%">Trạng thái</th><th style="width:14%">Cập nhật mới nhất</th><th style="width:11%">Cảnh báo</th></tr></thead>
+    <tbody>${rows||`<tr><td colspan="9"><div class="empty">Dự án chưa có đầu việc.${canManageProject(p)?" Bấm “+ Đầu việc”.":""}</div></td></tr>`}</tbody></table></div>
+    <p class="small muted" style="margin:8px 0 0">Bấm vào một đầu việc để xem chi tiết${S.canEdit?", sửa hoặc đánh giá khi hoàn thành":""}.</p></div>`;
+  return out;
+}
+/* Bảng đầu việc PHẲNG, không gấp/mở – đúng thứ tự lưu trong p.tasks (giữ nguyên thứ tự khung mẫu lúc tạo
+   dự án, xem catFlatTable() ở settings.js/projectForm() ở plan.js). "No." (t.no, tự gõ hoặc copy từ khung
+   mẫu, vd A/I/1/1.1) chỉ hiện như 1 nhãn đầu dòng, không dùng để tính lồng cấp hiển thị. */
+/* Tên đầu việc – giữ tên hàm này vì nhiều màn khác (weekly-input.js, reports.js, kpi.js, ui.js…) đang gọi;
+   trước đây tách bỏ phần "mã. hạng mục –" mã hoá trong t.dv, giờ t.dv đã là tên thuần nên chỉ trả nguyên. */
+function planShortName(dv){ return dv||""; }
+function planTaskRow(t, i, lvl=1){
+  const idle = t.status==="Chưa bắt đầu";
+  return `<tr class="click${idle?" tr-idle":""}" data-act="task" data-id="${esc(t.id)}" tabindex="0" title="${esc(t.dv)}">
+      <td style="padding-left:10px"><div class="cell-main">${t.no?`<span class="muted">${esc(t.no)}.</span> `:""}${esc(t.dv)}</div>${t.detail&&!idle?`<div class="cell-sub">${esc(t.detail)}</div>`:""}${t.note?`<div class="cell-sub" style="color:var(--teal-hover)">Ghi chú TrP: ${esc(t.note)}</div>`:""}</td>
+      <td>${esc(t.owner||"–")}</td>
+      <td>${t.doers.length?t.doers.map(esc).join(", "):"–"}</td>
+      <td>${t.deadline?dmy(t.deadline):"–"}</td>
+      <td style="text-align:center">${t.wl??"–"}</td><td style="text-align:center">${t.pr?`<span class="pill ${t.pr==="P1"?"bad":"mute"}">${esc(t.pr)}</span>`:""}</td>
+      <td>${stPill(t.status)}${t.done?`<div class="small muted">xong tuần ${isoWeek(t.done)}</div>`:""}</td>
+      <td class="small">${t.upd?`<div class="cell-sub" style="margin:0">${esc(t.upd)}</div>`:""}${t.ms?`<span class="pill ${t.ms>=3?"bad":"warn"}">Ma sát ${t.ms}</span> `:""}${esc(t.nn||"")}</td>
+      <td>${warnPills(t.warns)}${t.ontime===true?' <span class="pill ok">Đúng hạn</span>':t.ontime===false?' <span class="pill bad">Trễ hạn</span>':""}${t.status==="Hoàn thành"&&!(t.eval&&t.eval.dat)&&S.canEdit?' <span class="pill info">Chờ đánh giá</span>':""}</td></tr>`;
+}
+/* o.row dựng dòng (mặc định planTaskRow), o.cols số cột – chỉ còn 2 tham số thật sự dùng vì bảng không
+   còn gấp/mở theo hạng mục nữa (đã đổi theo yêu cầu người dùng: xem cùng thay đổi ở settings.js). */
+function planTreeRows(p, o={}){
+  const rowFn = o.row||planTaskRow;
+  return p._tasks.map((t,i) => rowFn(t, i+1, 1)).join("");
+}
+function projectForm(p){
+  const isNew = !p;
+  const v = p ? {...clean(p)} : {id:"", name:"", type:"Triển khai", owner:"", se:"", pm:"", tm:"", am:"", acc:"", milestones:"", progress:"", situation:"", proposal:"", difficulty:1};
+  const staffOpts = [["",""],...M.staff.map(s=>[s.name,s.name])];
+  openForm({
+    title: isNew ? "Dự án mới" : "Sửa thông tin dự án", values:v,
+    fields:[
+      {key:"name", label:"Tên dự án / gói thầu / tư vấn", type:"text", required:true},
+      {key:"type", label:"Loại", type:"seg", options:TYPES.map(t=>[t,t]), disabled:!isNew && (p.tasks||[]).length>0, hint:()=>!isNew&&(p.tasks||[]).length?"Không đổi loại khi dự án đã có đầu việc.":"Quyết định quy trình đầu việc áp dụng."},
+      {key:"owner", label:"Người phụ trách", type:"select", options:staffOpts},
+      {key:"se", label:"SE", type:"select", options:staffOpts},
+      {heading:"Vai trò dự án (gán người phụ trách theo đầu việc chuẩn trong khung mẫu – xem Cài đặt)"},
+      {key:"pm", label:"PM", type:"select", options:staffOpts, half:true},
+      {key:"tm", label:"TM", type:"select", options:staffOpts, half:true},
+      {key:"am", label:"AM", type:"select", options:staffOpts, half:true},
+      {key:"acc", label:"ACC (kế toán)", type:"select", options:staffOpts, half:true},
+      {key:"milestones", label:"Mốc hợp đồng / hạn nộp", type:"textarea"},
+      {key:"situation", label:"Tình hình / vướng mắc chung", type:"textarea"},
+      /* progress/proposal: chỉ dùng cho 2 cột "Tiến độ hiện tại"/"Đề xuất" ở Báo cáo → Báo cáo tổng hợp
+         dự án (xem rpBuildOverview() ở reports.js) – KHÔNG hiện lại ở thẻ dự án tại Kế hoạch dự án/Tổng
+         quan dự án (planDetail()/projectDetail() cố tình chỉ giữ 2 ô Mốc hợp đồng + Tình hình chung). */
+      {key:"progress", label:"Tiến độ hiện tại (chỉ hiện ở Báo cáo)", type:"textarea"},
+      {key:"proposal", label:"Đề xuất (chỉ hiện ở Báo cáo)", type:"textarea"},
+      {key:"difficulty", label:"Độ khó dự án", type:"seg", options:[[0.8,"Dễ"],[1,"Trung bình"],[1.3,"Khó"],[1.6,"Cực khó"]],
+        hint:v=>({0.8:"Dự án mở rộng, chỉ giao hàng, không cần triển khai.",1:"Đã triển khai công nghệ này trước đây.",1.3:"Triển khai mới.",1.6:"Công nghệ mới, cần chuyên gia hỗ trợ."}[v]||"")}
+    ],
+    saveLabel: isNew ? "Tạo dự án" : "Lưu thay đổi",
+    onSave: async x => {
+      if(!x.name.trim()) throw new Error("Nhập tên dự án.");
+      const roleFields = {owner:x.owner||"", se:x.se||"", pm:x.pm||"", tm:x.tm||"", am:x.am||"", acc:x.acc||""};
+      if(isNew){
+        let id = "p-"+slug(x.name); if(M.pById.get(id)) id += "-"+Math.random().toString(36).slice(2,5);
+        /* Luôn tạo sẵn toàn bộ đầu việc theo đúng cấu trúc khung mẫu (config/catalog, xem catFlatTable()
+           ở settings.js) của loại dự án vừa chọn – copy nguyên "No."/tên/ưu tiên, người phụ trách lấy theo
+           vai trò (c.role) gán ở trên nếu có, không thì để trống cho PM tự gán sau. */
+        const roleOf = {PM:x.pm, TM:x.tm, AM:x.am, ACC:x.acc};
+        const tasks = S.catalog.filter(c=>c.type===x.type).map((c,i)=>({id:"t"+String(i+1).padStart(3,"0"), no:c.no||"", dv:c.name, detail:"",
+          owner:(c.role && roleOf[c.role]) || "", collab:"", deadline:null, qm:null, pt:null, pr:c.pr==="Cao"?"P1":"P2",
+          init:{status:"",ms:null,nn:""}, note:"", eval:{}}));
+        const order = Math.max(0,...M.projects.map(q=>q.order||0))+1;
+        await saveProject({id, name:x.name.trim(), type:x.type, ...roleFields, milestones:x.milestones||"", progress:x.progress||"", situation:x.situation||"", proposal:x.proposal||"", difficulty:x.difficulty||1, order, tasks});
+        S.planSel = id; toast(`Đã tạo dự án${tasks.length?" với "+tasks.length+" đầu việc":""}`);
+      } else {
+        await saveProject({...p, name:x.name.trim(), type:x.type, ...roleFields, milestones:x.milestones||"", progress:x.progress||"", situation:x.situation||"", proposal:x.proposal||"", difficulty:x.difficulty||1}); toast("Đã lưu thông tin dự án");
+      }
+    },
+    onDelete: (isNew || !canDeleteProject(p)) ? null : async () => { if(!confirm(`Xoá dự án “${p.name}” và toàn bộ đầu việc?`)) return false; await remove("projects/"+p.id); S.planSel=null; toast("Đã xoá dự án"); }
+  });
+}
+function taskForm(p, t){
+  const isNew = !t;
+  const raw = t ? (p.tasks||[]).find(x=>x.id===t.id) : null;
+  const v = raw ? {...raw, st0:(raw.init||{}).status||"", ms0:(raw.init||{}).ms??null, nn0:(raw.init||{}).nn||"", dat:(raw.eval||{}).dat||"", cl:(raw.eval||{}).cl??null, tc:(raw.eval||{}).tc??null, nx:(raw.eval||{}).nx||""}
+    : {id:"", no:"", dv:"", detail:"", owner:p.owner||"", collab:"", deadline:null, qm:null, pt:null, pr:"P2", st0:"", ms0:null, nn0:"", note:""};
+  /* Danh sách phẳng, đúng thứ tự khung mẫu (config/catalog) – KHÔNG gom theo hạng mục nữa: "No." là text
+     tự do (A/I/1/1.1…) nên không có cách suy luận chắc chắn đâu là dòng hạng mục, đâu là nhánh con chỉ từ
+     text (chữ cái và số La Mã dùng chung ký tự, dễ gom nhầm hàng loạt – xem bình luận ở model.js derive()).
+     Nhãn mỗi lựa chọn hiện kèm "No." để vẫn dễ tìm theo đúng khung mẫu. */
+  const dvOpts = S.catalog.filter(c=>c.type===p.type).map(c=>[c.name, (c.no?c.no+". ":"")+c.name]);
+  const staffOpts = [["",""],...M.staff.map(s=>[s.name,s.name])];
+  if(!canManageProject(p)){ if(isNew){ toast("Chỉ trưởng phòng hoặc người tạo dự án mới thêm đầu việc."); return; } return openInfo(p, t); }
+  const cOf = n => S.catalog.find(c=>c.type===p.type && c.name===n) || {};
+  openForm({
+    title: isNew ? "Thêm đầu việc" : "Đầu việc", subtitle: p.name, values:v,
+    info: t ? `<div class="kv" style="margin-bottom:16px"><dt>Trạng thái hiện tại</dt><dd>${stPill(t.status)}</dd>
+      <dt>Cập nhật mới nhất</dt><dd>${esc(t.upd||"–")}</dd><dt>Ngày cập nhật</dt><dd>${esc(t.updDate||"–")}</dd><dt>Kết quả đầu ra</dt><dd>${esc(cOf(t.dv).result||"–")}</dd><dt>Chú thích</dt><dd>${esc(cOf(t.dv).evidence||"–")}</dd></div>` : "",
+    fields:[
+      {key:"no", label:"No. (mã thứ tự theo khung mẫu, vd A, I, 1, 1.1 – tuỳ chọn)", type:"text", half:true},
+      {key:"dv", label:"Đầu việc (quy trình "+p.type+")", type:"select", options:dvOpts, required:true, half:true},
+      {key:"detail", label:"Nội dung chi tiết", type:"textarea"},
+      {key:"owner", label:"Phụ trách (TM)", type:"select", options:staffOpts, half:true},
+      {key:"collab", label:"Thực hiện (được giao làm)", type:"select", options:staffOpts, half:true},
+      {key:"deadline", label:"Deadline theo HĐ", type:"date", half:true},
+      {key:"pr", label:"Ưu tiên", type:"seg", options:["P1","P2","P3","P4"].map(x=>[x,x]), half:true},
+      {key:"qm", label:"Quy mô", type:"seg", options:[1,2,3,4,5].map(n=>[n,String(n)]), required:true, hint:v=>v?`${QM_HINT[v]} (≈${fmt1(QM_HOURS[v])}h)`:[1,2,3,4,5].map(n=>n+" = "+QM_HINT[n]+" (≈"+fmt1(QM_HOURS[n])+"h)").join(" · ")},
+      {key:"pt", label:"Độ phức tạp (để trống = mặc định 1,0)", type:"seg", options:[[null,"Mặc định"],...[1,2,3,4,5].map(n=>[n,String(n)])], hint:v=>v?`${PT_HINT[v]} (×${fmt1(PT_MULT[v])})`:""},
+      {key:"st0", label:"Trạng thái ban đầu (chỉ dùng khi chưa có dữ liệu tuần)", type:"select", options:[["",""],...ST_ALL.map(s=>[s,s])]},
+      /* "Ghi chú của trưởng phòng" (task.note) không còn sửa được ở đây nữa – đã có "Đánh giá khi hoàn
+         thành" bên dưới cho nhận xét sau khi xong; ghi chú vướng mắc/định hướng xử lý giờ chỉ sửa ở Nhập
+         theo tuần (weekly-input.js, field "mgrNote" – cùng ghi vào task.note qua route task-note). Vẫn
+         đọc lại t.note để hiển thị (xem planDetail/dashRow), chỉ bỏ ô sửa ở form này. */
+      /* Chỉ trưởng phòng đánh giá khi hoàn thành, không phải nhân viên (kể cả TM/SE/người tạo được sửa đầu việc) */
+      ...(t && t.status==="Hoàn thành" && S.canEdit ? [
+        {heading:"Đánh giá khi hoàn thành"},
+        {key:"dat", label:"Đạt yêu cầu?", type:"seg", options:[["Đạt","Đạt"],["Đạt một phần","Đạt một phần"],["Không đạt","Không đạt"]]},
+        {key:"cl", label:"Chất lượng (1–5)", type:"seg", options:[1,2,3,4,5].map(n=>[n,String(n)]), half:true},
+        {key:"tc", label:"Mức độ tự chủ (1–5)", type:"seg", options:[1,2,3,4,5].map(n=>[n,String(n)]), half:true},
+        {key:"nx", label:"Nhận xét / đóng góp", type:"textarea"}] : [])
+    ],
+    saveLabel: isNew ? "Thêm đầu việc" : "Lưu thay đổi",
+    onSave: async x => {
+      const tasks = [...(p.tasks||[])];
+      const body = {id: x.id || nextTaskId(p), no:x.no||"", dv:x.dv, detail:x.detail||"", owner:x.owner||"", collab:x.collab||"", deadline:x.deadline||null, qm:x.qm||null, pt:x.pt||null, pr:x.pr||"",
+        init:{status:x.st0||"", ms:x.ms0??null, nn:x.nn0||""}, note:x.note||"", eval: raw&&raw.eval ? {...raw.eval} : {}, updatedAt:Date.now()};
+      if(t && t.status==="Hoàn thành" && S.canEdit) body.eval = {dat:x.dat||"", cl:x.cl??null, tc:x.tc??null, nx:x.nx||""};
+      const i = tasks.findIndex(q=>q.id===body.id); if(i>=0) tasks[i]=body; else tasks.push(body);
+      await saveProject({...p, tasks}); toast(isNew?"Đã thêm đầu việc":"Đã lưu đầu việc");
+    },
+    onDelete: isNew ? null : async () => { if(!confirm("Xoá đầu việc này?")) return false; await saveProject({...p, tasks:(p.tasks||[]).filter(q=>q.id!==t.id)}); toast("Đã xoá đầu việc"); }
+  });
+}
+function nextTaskId(p){ let n=(p.tasks||[]).length+1; const ids=new Set((p.tasks||[]).map(t=>t.id)); while(ids.has("t"+String(n).padStart(3,"0"))) n++; return "t"+String(n).padStart(3,"0"); }
+/* extraBtn tuỳ chọn (vd {label, onClick}) – thêm nút đi tới nơi xử lý bên cạnh "Đóng", dùng cho chỗ gọi
+   cần điều hướng tiếp (xem ACTIONS["exinfo"] ở exec-dashboard.js). Gọi không kèm tham số (Tổng quan dự án,
+   data-act="dashtask") thì vẫn chỉ xem thuần, không có nút thêm – đúng ý "Tổng quan dự án chỉ để xem". */
+function openInfo(p, t, extraBtn){
+  const c = S.catalog.find(x=>x.type===p.type && x.name===t.dv)||{};
+  openForm({title:"Đầu việc", subtitle:p.name, values:{}, fields:[], readOnly:true, extraBtn,
+    info:`<h3 style="margin-bottom:12px">${t.no?esc(t.no)+". ":""}${esc(t.dv)}</h3><div class="kv"><dt>Nội dung</dt><dd>${esc(t.detail||"–")}</dd><dt>Phụ trách</dt><dd>${esc(t.owner||"–")}</dd>
+    <dt>Deadline HĐ</dt><dd>${dmy(t.deadline)}</dd><dt>Trạng thái</dt><dd>${stPill(t.status)}</dd><dt>Cập nhật</dt><dd>${esc(t.upd||"–")}</dd><dt>Ngày cập nhật</dt><dd>${esc(t.updDate||"–")}</dd>
+    <dt>Kết quả đầu ra</dt><dd>${esc(c.result||"–")}</dd><dt>Workload</dt><dd>${t.wl??"–"}</dd>
+    <dt>Ghi chú TrP</dt><dd>${esc(t.note||"–")}</dd></div>`});
+}
+

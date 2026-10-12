@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Project Management</title>
+<script>(function(){ /* áp giao diện (sáng/tối/hệ thống) trước khi tải CSS để tránh chớp màu sai */
+  try{ var t = localStorage.getItem("ptkt.theme") || "light"; if(t==="light"||t==="dark") document.documentElement.dataset.theme = t; }
+  catch(e){ document.documentElement.dataset.theme = "light"; }
+})();</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="icon" href="img/logo-chevrons.png">
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/dashboard.css">
+<link rel="stylesheet" href="css/plan.css">
+<!-- CSS của module mở rộng đặt ở đây -->
+<link rel="stylesheet" href="css/reports.css">
+
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-l">
+    <img class="topbar-wordmark" src="img/NextGen.png" alt="NEXT GEN · Service Integration">
+    <div class="topbar-div"></div>
+    <div class="topbar-app">Project Management</div>
+  </div>
+  <div class="topbar-r">
+    <div class="tb-wrap">
+      <button class="tb-btn" id="tbApps" type="button" aria-haspopup="true" aria-expanded="false" title="Ứng dụng"></button>
+      <div class="tb-dropdown" id="tbAppsMenu" hidden></div>
+    </div>
+    <div class="tb-wrap">
+      <button class="tb-btn" id="tbBell" type="button" aria-haspopup="true" aria-expanded="false" title="Thông báo"><span class="tb-badge" id="tbBellN" hidden></span></button>
+      <div class="tb-dropdown" id="tbBellMenu" hidden></div>
+    </div>
+    <div class="tb-wrap">
+      <button class="tb-account" id="tbAccount" type="button" aria-haspopup="true" aria-expanded="false">
+        <div class="avatar" id="tbAvatar"></div><span id="tbName"></span><i class="tb-chev"></i>
+      </button>
+      <div class="tb-dropdown tb-dropdown-r" id="tbAccountMenu" hidden></div>
+    </div>
+  </div>
+</header>
+<div class="app">
+  <aside class="side">
+    <div class="side-head"><button class="side-toggle" id="sideToggle" type="button" aria-label="Thu gọn menu" title="Thu gọn menu"></button></div>
+    <nav class="nav" id="nav" aria-label="Điều hướng"></nav>
+    <div class="side-foot">
+      <label for="meSel">Tôi là</label>
+      <select id="meSel" aria-label="Tôi là"></select>
+      <div class="conn"><i class="dot" id="connDot"></i><span id="connTxt">Đang kết nối…</span></div>
+      <div class="userbox" id="userBox" hidden></div>
+    </div>
+  </aside>
+  <main id="main"><div class="page"><div class="empty"><b>Đang tải dữ liệu…</b></div></div></main>
+</div>
+<div id="layer"></div>
+<script src="js/core/utils.js"></script>
+<script src="js/core/constants.js"></script>
+<script src="js/core/state.js"></script>
+<script src="js/core/model.js"></script>
+<script src="js/core/data.js"></script>
+<script src="js/core/export.js"></script>
+<script src="js/core/ui.js"></script>
+<script src="js/views/exec-dashboard.js"></script>
+<script src="js/views/project-overview.js"></script>
+<script src="js/views/weekly-load.js"></script>
+<script src="js/views/weekly-input.js"></script>
+<script src="js/views/plan.js"></script>
+<script src="js/views/settings.js"></script>
+<script src="js/views/help.js"></script>
+<script src="js/core/server.js"></script>
+<script src="js/core/events.js"></script>
+<!-- ===== MODULE MỞ RỘNG: thêm <script src="js/modules/ten-module.js"></script> ngay dưới dòng này ===== -->
+<script src="js/modules/feedback.js"></script>
+<script src="js/modules/reports.js"></script>
+<script src="js/modules/kpi.js"></script>
+<script src="js/modules/worklog.js"></script>
+
+<!-- ===== luôn để main.js cuối cùng ===== -->
+<script src="js/main.js"></script>
+</body>
+</html>

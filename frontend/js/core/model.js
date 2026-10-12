@@ -1,0 +1,140 @@
+"use strict";
+/* Mô hình tính toán (M): workload, trạng thái hiện tại, tiến độ, cảnh báo – tính lại mỗi lần vẽ */
+/* ================= derived model ================= */
+let M = null;
+function derive(){
+  const today = todayISO(), thisMon = mondayOf(today);
+  const staff = S.staff.map(s => ({...s, cap: Math.round((+s.hours||0)*(1-(+s.pct||0))*(+s.factor||1)*10)/10}));
+  const capOf = new Map(staff.map(s => [s.name, s.cap]));
+  const projects = [...S.projects].sort((a,b)=>(a.order??999)-(b.order??999) || a.name.localeCompare(b.name,"vi"));
+  const pById = new Map(projects.map(p => [p.id, p]));
+  const taskMap = new Map();
+  for(const p of projects) for(const t of (p.tasks||[])) taskMap.set(p.id+"|"+t.id, {p, t});
+  // weekly entries flat
+  const entries = [];
+  for(const w of S.weeks) for(const e of (w.entries||[])){
+    const ref = taskMap.get(e.projectId+"|"+e.taskId);
+    /* Workload của một lượt nhập tuần = e.hours (số giờ thực tế đã làm, người nhập tự gõ trong ô "Thời
+       gian thực hiện") × PT_MULT[Độ phức tạp] – Quy mô (e.qm) ở màn Nhập theo tuần giờ chỉ để tham
+       khảo/ước lượng, KHÔNG tham gia công thức này nữa (tránh tính trùng với giờ thật đã gõ). Thiếu Độ
+       phức tạp → hệ số mặc định 1,0 (không chặn). Các lượt nhập cũ chỉ có e.qm (từ trước khi có ô giờ
+       thật) vẫn đọc lại qua wlOf(e.qm, e.pt) để không đổi dữ liệu lịch sử. */
+    const wl = e.hours!=null ? Math.round(e.hours*(e.pt?PT_MULT[e.pt]:1)*10)/10 : wlOf(e.qm, e.pt);
+    entries.push({...e, week:w.week, person:w.person, docId:w._id, ref, wl, type: ref ? ref.p.type : (pById.get(e.projectId)||{}).type || "Nội bộ"});
+  }
+  // latest per task
+  const latest = new Map(), doneWk = new Map();
+  for(const e of entries){
+    const k = e.projectId+"|"+e.taskId;
+    if(e.status){ const cur = latest.get(k); if(!cur || e.week > cur.week) latest.set(k, e); }
+    if(e.status==="Hoàn thành"){ const d=doneWk.get(k); if(!d || e.week<d) doneWk.set(k, e.week); }
+  }
+  const lastAny = new Map();
+  for(const e of entries){ const k=e.projectId+"|"+e.taskId; const cur=lastAny.get(k); if(!cur || e.week>cur.week) lastAny.set(k,e); }
+  /* Những ai thực sự đang làm một đầu việc: gộp người được phân công sẵn (t.collab) với những người đã
+     nhập việc đó trong "Nhập theo tuần" ở TUẦN GẦN NHẤT có dữ liệu (không tính mọi tuần từ trước tới giờ –
+     nếu không, một người chỉ cần từng nhập 1 lần duy nhất trong quá khứ sẽ dính mãi vào cột này dù không
+     còn liên quan). Nếu 2 người cùng nhập đầu việc đó trong cùng tuần gần nhất, cả 2 đều hiện ra. */
+  const entriesByTask = new Map();
+  for(const e of entries){ const k=e.projectId+"|"+e.taskId; if(!entriesByTask.has(k)) entriesByTask.set(k, []); entriesByTask.get(k).push(e); }
+  const doersByTask = new Map();
+  for(const [k, es] of entriesByTask){
+    const lastWk = es.reduce((a,e)=>!a||e.week>a?e.week:a, null);
+    doersByTask.set(k, new Set(es.filter(e=>e.week===lastWk).map(e=>e.person)));
+  }
+  // tasks enriched
+  const tasks = [];
+  for(const p of projects){
+    /* KHÔNG tự suy luận "hạng mục" (phase) từ "No." nữa: đã thử nhận diện dòng hạng mục bằng No. thuần
+       chữ cái (vd "A") nhưng số La Mã (I, II…) cũng thuần chữ cái → không phân biệt được với chữ cái dùng
+       làm mã hạng mục bằng text thuần tuý (vd "I" dễ bị hiểu nhầm là hạng mục ngang hàng "A" thay vì nhánh
+       con của 1 hạng mục), có thể gom sai hàng loạt đầu việc vào nhầm hạng mục. Đúng theo yêu cầu người
+       dùng (đổi "Khung mẫu"/"Kế hoạch dự án" sang bảng phẳng, xem settings.js/plan.js): t.phase luôn rỗng,
+       dải cảnh báo theo giai đoạn (strip, ui.js) và cột "Hạng mục" ở reports.js rơi về trạng thái rỗng/
+       "Khác" một cách NHẤT QUÁN, thay vì hiện sai mà trông như đúng. */
+    p._tasks = (p.tasks||[]).map(t => {
+      const k = p.id+"|"+t.id;
+      const qm = t.qm, pt = t.pt;
+      /* Workload (giờ) = số giờ đại diện của Quy mô × hệ số thời gian của Độ phức tạp (xem wlOf() ở
+         constants.js) — không chia cho Hệ số năng lực nữa, vì hệ số đó đã nhân vào Capacity (cap ở trên)
+         rồi; chia thêm ở đây sẽ tính hệ số năng lực hai lần.
+         "Độ khó dự án" (p.difficulty) chỉ là nhãn phân loại dự án, không tham gia công thức tính tải. */
+      const wl = wlOf(qm, pt);
+      const le = latest.get(k), la = lastAny.get(k);
+      const status = le ? le.status : (t.init && t.init.status) || "Chưa bắt đầu";
+      const src = le ? "Tuần "+isoWeek(le.week) : "";
+      const ms = le ? (le.ms ?? null) : (t.init ? t.init.ms ?? null : null);
+      const nn = le ? (le.nn||"") : (t.init ? t.init.nn||"" : "");
+      const upd = la ? [la.work, la.note].filter(Boolean).join(" · ") : "";
+      /* Vướng mắc của NGƯỜI LÀM, tách riêng khỏi "Ghi chú của trưởng phòng" (t.note, trường gốc trên task) –
+         lấy từ lượt nhập tuần gần nhất (la.note), dùng cho cột "Vướng mắc" ở Báo cáo dự án (reports.js),
+         không lẫn với t.note ("Hướng giải quyết"). */
+      const lastNote = la ? (la.note||"") : "";
+      /* "Ngày cập nhật": tuần/ngày nhân viên lưu lần gần nhất, tách riêng khỏi nội dung "Cập nhật" ở trên */
+      /* Ngày cập nhật = mốc gần nhất giữa lần nhập theo tuần và lần trưởng phòng/TM/SE sửa trực tiếp đầu việc ở Kế hoạch dự án */
+      const weekDate = la ? parse(la.week) : null;
+      const editDate = t.updatedAt ? new Date(t.updatedAt) : null;
+      const latestDate = weekDate && editDate ? (weekDate >= editDate ? weekDate : editDate) : (weekDate || editDate);
+      const updDate = latestDate ? dmy(iso(latestDate)) : "";
+      const lastWeek = la ? la.week : null;
+      const doerSet = new Set(doersByTask.get(k) || []);
+      if(t.collab) doerSet.add(t.collab);
+      const doers = [...doerSet].sort((a,b)=>a.localeCompare(b,"vi"));
+      const done = status==="Hoàn thành" ? (doneWk.get(k) || null) : null;
+      const ontime = done && t.deadline ? (done <= t.deadline) : null;
+      const warns = [];
+      if(p.type!=="Nội bộ"){
+        if(!t.owner) warns.push(["bad","Chưa có người phụ trách"]);
+        if(OPEN.has(status) && t.deadline && t.deadline < today) warns.push(["bad","Quá hạn"]);
+        if(OPEN.has(status) && t.deadline && t.deadline >= today && days(today,t.deadline) <= 14) warns.push(["warn","Sắp đến hạn"]);
+        if(OPEN.has(status) && (ms||0) >= 3) warns.push(["bad","Ma sát cao"]);
+        if((status==="Đang làm"||status==="Đang vướng") && (!lastWeek || lastWeek < addDays(thisMon,-14))) warns.push(["warn","Không cập nhật >2 tuần"]);
+      }
+      const o = {...t, p, key:k, qmE:qm, ptE:pt, wl, status, src, ms, nn, upd, lastNote, updDate, lastWeek, doers, done, ontime, warns, phase:"", phaseName:""};
+      tasks.push(o); return o;
+    });
+    const live = p._tasks.filter(t => t.status!=="Hủy");
+    /* Đầu việc chưa chấm Quy mô (wl=null) vẫn phải có trọng số (mặc định 1) khi tính tiến độ, nếu không
+       nó "biến mất" khỏi mẫu số — khiến % tiến độ có thể ra 100% dù đầu việc đó còn dang dở (chỉ cần các
+       đầu việc có Quy mô đều đã xong). Áp dụng cùng cách tính này ở p._phases bên dưới. */
+    const tot = live.reduce((a,t)=>a+(t.wl??1),0), dn = live.filter(t=>t.status==="Hoàn thành").reduce((a,t)=>a+(t.wl??1),0);
+    p._prog = tot ? dn/tot : null;
+    /* "Đã hoàn thành cả dự án" (planIsDone) không được chỉ dựa vào p._prog===1 — nếu các đầu việc còn mở
+       (quá hạn/đang vướng) thiếu Quy mô (wl=null→0), chúng không cộng vào tot, nên dn/tot có thể ra đúng
+       1 dù dự án vẫn còn việc chưa xong. Dùng cờ riêng, đếm theo trạng thái từng đầu việc, không theo wl. */
+    p._allDone = live.length>0 && live.every(t=>t.status==="Hoàn thành");
+    const nexts = p._tasks.filter(t=>OPEN.has(t.status) && t.deadline && t.deadline>=today).map(t=>t.deadline).sort();
+    p._next = nexts[0] || null;
+    p._late = p._tasks.filter(t=>t.warns.some(w=>w[1]==="Quá hạn")).length;
+    p._soon = p._tasks.filter(t=>t.warns.some(w=>w[1]==="Sắp đến hạn")).length;
+    p._stuck = p._tasks.filter(t=>OPEN.has(t.status) && (t.status==="Đang vướng" || (t.ms||0)>=1)).length;
+    p._maxms = Math.max(0, ...p._tasks.filter(t=>OPEN.has(t.status)).map(t=>t.ms||0));
+    /* Không còn khái niệm "hạng mục" (t.phase luôn rỗng, xem bình luận ở trên) nên p._phases luôn rỗng –
+       dải cảnh báo theo giai đoạn (strip, ui.js) tự ẩn khi mảng rỗng (đã có sẵn, xem ui.js dòng strip()). */
+    p._phases = [];
+  }
+  return {today, thisMon, staff, capOf, projects, pById, taskMap, entries, tasks};
+}
+/* Đầu việc quá hạn toàn phòng (không tính dự án Nội bộ) – dùng chung cho Dashboard và chuông thông báo ở
+   header. lateTasks() sắp theo độ gấp: Ưu tiên (P1 trước) rồi tới hạn chót (quá hạn lâu nhất lên đầu). */
+function lateTaskCount(){ return lateTasks().length; }
+function lateTasks(){
+  const prRank = {P1:1, P2:2, P3:3, P4:4};
+  return M.tasks.filter(t=>t.p.type!=="Nội bộ" && t.warns.some(w=>w[1]==="Quá hạn"))
+    .sort((a,b)=>(prRank[a.pr]||9)-(prRank[b.pr]||9) || String(a.deadline||"9999").localeCompare(String(b.deadline||"9999")));
+}
+/* Vướng mắc TRONG TUẦN HIỆN TẠI (dùng riêng cho chuông thông báo ở header) – lấy thẳng từ lượt nhập
+   "Nhập theo tuần" của đúng tuần này (M.entries, e.ms), KHÔNG lấy theo t.ms/t.nn của đầu việc (giá trị
+   "mới nhất tính tới hiện tại" dùng chung cho Kế hoạch dự án/Tổng quan dự án – có thể đến từ một tuần cũ
+   hơn nhiều). Sắp theo cấp độ ma sát cao nhất lên đầu. Nhân viên chỉ thấy vướng mắc của chính mình
+   (so theo S.me, gắn với tài khoản); trưởng phòng/phó phòng/admin (S.canEdit) thấy của mọi người. */
+function weekIssues(){
+  const w = mondayOf(todayISO());
+  let list = M.entries.filter(e=>e.week===w && e.ref && e.ref.p.type!=="Nội bộ" && (e.ms||0)>=1);
+  if(!S.canEdit) list = list.filter(e=>e.person===S.me);
+  return list.sort((a,b)=>(b.ms||0)-(a.ms||0));
+}
+/* t.phase luôn rỗng (xem bình luận ở derive() – bỏ hẳn việc tự suy luận hạng mục từ "No." vì không phân
+   biệt chắc chắn được chữ cái mã hạng mục với số La Mã của nhánh con), hàm này giữ lại để nơi gọi không
+   phải rẽ nhánh riêng cho task thô (vd e.ref.t trong M.entries) và task đã derive(). */
+function taskPhase(p, taskId){ const t = (p._tasks||[]).find(x=>x.id===taskId); return t ? t.phase : ""; }

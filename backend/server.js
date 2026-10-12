@@ -1,0 +1,449 @@
+"use strict";
+/*
+ * Phòng Kỹ thuật – Quản trị công việc và nguồn lực
+ * Máy chủ web: Express + MariaDB (hoặc SQLite) – xem lib/store.js
+ *
+ *  - Lưu dữ liệu dạng "tài liệu" (document):
+ *      config/staff, config/catalog, projects/<id>, weeks/<tuần>__<người>
+ *  - Đăng nhập bằng tài khoản; vai trò admin (Trưởng phòng) và member (nhân viên)
+ *  - Quyền ghi theo bảng RULES bên dưới
+ *  - Cập nhật thời gian thực cho mọi người đang mở trang (Server-Sent Events)
+ */
+const path = require("path");
+const fs = require("fs");
+const express = require("express");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const cookieParser = require("cookie-parser");
+const { createStore } = require("./lib/store");
+
+/* ---------------- cấu hình (đọc từ file .env) ---------------- */
+const PORT = Number(process.env.PORT) || 3000;
+const HOST = process.env.HOST || "127.0.0.1";
+const JWT_SECRET = process.env.JWT_SECRET || "";
+const COOKIE_SECURE = process.env.COOKIE_SECURE === "true";
+const SESSION_DAYS = Number(process.env.SESSION_DAYS) || 30;
+const COOKIE = "ptkt_session";
+
+if (JWT_SECRET.length < 32) {
+  console.error("[LỖI] JWT_SECRET trong file .env phải dài ít nhất 32 ký tự.");
+  process.exit(1);
+}
+
+/*
+ * VAI TRÒ TÀI KHOẢN: 4 cấp admin > head (Trưởng phòng) > deputy (Phó phòng) > member (Nhân viên).
+ *   - "admin": tài khoản HỆ THỐNG, tạo lúc khởi tạo CSDL (chỉ qua `npm run user -- create`, không tạo/sửa
+ *     được qua giao diện/API), không bắt buộc gắn tên hiển thị/nhân sự thật, và KHÔNG hiện trong danh sách
+ *     "Tài khoản đăng nhập" ở Cài đặt (xem GET /api/users bên dưới).
+ *   - "head"/"deputy": vai trò thật của người trong phòng (Trưởng phòng/Phó phòng), tạo/sửa được qua Cài
+ *     đặt như trước đây.
+ * Hiện tại cả 3 vai trò admin/head/deputy đều TOÀN QUYỀN như nhau (FULL_ROLES bên dưới) – chưa phân biệt,
+ * sẽ giới hạn dần quyền của head/deputy sau này mà không cần đổi lại cấu trúc vai trò.
+ *
+ * QUY TẮC GHI DỮ LIỆU THEO TỪNG BỘ SƯU TẬP (collection)
+ * Thêm module mới cần lưu dữ liệu → thêm 1 dòng vào đây.
+ *   "admin"       : chỉ tài khoản toàn quyền (FULL_ROLES) được ghi/xoá
+ *   "member"      : mọi tài khoản đã đăng nhập được ghi/xoá
+ *   "own-week"    : tài khoản toàn quyền ghi tất cả; nhân viên chỉ ghi dữ liệu tuần của chính mình, và chỉ
+ *                   ghi được tuần hiện tại (theo lịch máy chủ) trở đi — tuần cũ đã khoá với nhân viên
+ *   "own-project" : tài khoản toàn quyền ghi tất cả (kể cả tạo dự án mới). Nhân viên: sửa dự án và
+ *                   đầu việc (PUT) nếu là người tạo (created_by, máy chủ ghi, không nhận từ
+ *                   client) HOẶC là TM (owner)/SE của dự án (so khớp staff_name của tài khoản);
+ *                   XOÁ cả dự án (DELETE) thì chỉ người tạo mới được, kể cả là TM/SE.
+ *                   Riêng "Đánh giá khi hoàn thành" (task.eval) chỉ tài khoản toàn quyền ghi được;
+ *                   nhân viên gửi gì cũng bị máy chủ giữ nguyên giá trị cũ (xem route PUT /api/doc/projects/:id)
+ *   "own"         : ai cũng tạo mới được (PUT lên id chưa tồn tại); sửa/xoá thì chỉ người tạo
+ *                   (created_by, máy chủ ghi) hoặc tài khoản toàn quyền mới được.
+ * Mọi tài khoản đã đăng nhập đều ĐỌC được tất cả.
+ */
+const FULL_ROLES = new Set(["admin", "head", "deputy"]);
+/* Thứ bậc để kiểm soát việc QUẢN LÝ TÀI KHOẢN (không liên quan RULES/canWrite ở trên – 3 vai trò
+   admin/head/deputy vẫn toàn quyền ngang nhau với dữ liệu dự án/tuần...): một tài khoản chỉ xem/sửa
+   được tài khoản khác có cấp ≤ cấp của chính mình (admin > head > deputy > member). "admin" ẩn hẳn khỏi
+   Cài đặt với người xem cấp thấp hơn (xử lý riêng ở GET /api/users), còn head/deputy/member hiển thị đủ
+   cho nhau nhưng không sửa được tài khoản cấp cao hơn mình. */
+const ROLE_RANK = { admin: 4, head: 3, deputy: 2, member: 1 };
+const RULES = {
+  config: "admin",          // config/staff (nhân sự), config/catalog (đầu việc chuẩn)
+  projects: "own-project",  // projects/<mã dự án>  (thông tin dự án + đầu việc)
+  weeks: "own-week",        // weeks/<thứ 2 của tuần>__<tên>  (dữ liệu nhập theo tuần)
+  feedback: "own",          // feedback/<id>  (góp ý, yêu cầu cải tiến)
+  kpiNote: "admin",         // kpiNote/<kỳ>__<tên nhân sự>  (nhận xét của trưởng phòng ở trang KPI & Năng lực)
+  worklog: "own-week",      // worklog/<thứ 2 của tuần>__<tên>  (nhật ký làm việc trong tuần, tự do ghi chú –
+                             // đúng cơ chế own-week: tài khoản toàn quyền sửa được của mọi người/mọi tuần,
+                             // để bù lại khi ai đó quên ghi lúc làm thêm giờ; nhân viên chỉ sửa tuần hiện
+                             // tại trở đi, của chính mình)
+};
+const COLLECTIONS = new Set(Object.keys(RULES));
+const ID_RE = /^[A-Za-z0-9_\-.~:@+]{1,200}$/;
+
+const store = createStore();
+
+/* ---------------- tiện ích ---------------- */
+function slug(s) {
+  return String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "x";
+}
+const publicUser = u => ({ id: u.id, username: u.username, display_name: u.display_name, staff_name: u.staff_name, role: u.role, active: !!u.active });
+const audit = (user, action, p) => store.audit(user ? user.username : null, action, p).catch(e => console.error("[audit]", e.message));
+/* bọc route async để lỗi được chuyển về bộ xử lý lỗi chung */
+const A = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
+/* ---------------- realtime (Server-Sent Events) ---------------- */
+const clients = new Set();
+function broadcast(collection) {
+  const msg = `event: change\ndata: ${JSON.stringify({ collection })}\n\n`;
+  for (const res of clients) { try { res.write(msg); } catch (e) { /* bỏ qua */ } }
+}
+setInterval(() => { for (const res of clients) { try { res.write(": ping\n\n"); } catch (e) {} } }, 25000).unref();
+
+/* ---------------- ứng dụng ---------------- */
+const app = express();
+app.disable("x-powered-by");
+app.set("trust proxy", "loopback");
+app.use(express.json({ limit: "5mb" }));
+app.use(cookieParser());
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("Referrer-Policy", "same-origin");
+  next();
+});
+
+/* Tự đăng xuất do không hoạt động: cookie phiên sống tới SESSION_DAYS ngày (để không phải đăng nhập lại
+   mỗi lần mở trình duyệt), nhưng nếu không có thao tác thật (frontend gọi POST /api/activity, xem
+   resetIdleTimer() trong frontend/js/core/server.js) trong IDLE_TIMEOUT_MIN phút thì coi như hết phiên dù
+   cookie vẫn còn hạn – kể cả khi đã đóng hẳn trình duyệt rồi mở lại sau đó. Chỉ lưu tạm trên bộ nhớ (không
+   cần bền vững qua việc khởi động lại máy chủ): nếu máy chủ restart, coi như mọi người vừa hoạt động lại
+   (an toàn hơn là tự đăng xuất hết mọi người mỗi lần triển khai bản mới). */
+const IDLE_TIMEOUT_MIN = 15;
+const lastSeen = new Map(); // uid -> mốc thời gian (ms) hoạt động thật gần nhất
+const auth = A(async (req, res, next) => {
+  const token = req.cookies[COOKIE];
+  if (!token) return res.status(401).json({ error: "Chưa đăng nhập" });
+  let p;
+  try { p = jwt.verify(token, JWT_SECRET); } catch (e) { return res.status(401).json({ error: "Phiên đăng nhập hết hiệu lực" }); }
+  const u = await store.getUserById(p.uid);
+  if (!u || !u.active || u.token_version !== p.tv) return res.status(401).json({ error: "Phiên đăng nhập hết hiệu lực" });
+  const seen = lastSeen.get(u.id);
+  if (seen != null && Date.now() - seen > IDLE_TIMEOUT_MIN * 60e3) {
+    lastSeen.delete(u.id);
+    return res.status(401).json({ error: "Đã tự đăng xuất do không hoạt động" });
+  }
+  req.user = u; next();
+});
+const adminOnly = (req, res, next) => FULL_ROLES.has(req.user.role) ? next() : res.status(403).json({ error: "Chỉ trưởng phòng/phó phòng được thực hiện" });
+function setSession(res, u) {
+  const token = jwt.sign({ uid: u.id, tv: u.token_version }, JWT_SECRET, { expiresIn: `${SESSION_DAYS}d` });
+  res.cookie(COOKIE, token, { httpOnly: true, sameSite: "lax", secure: COOKIE_SECURE, maxAge: SESSION_DAYS * 864e5, path: "/" });
+  lastSeen.set(u.id, Date.now());
+}
+
+/* --- đăng nhập (có giới hạn số lần sai) --- */
+const fails = new Map();
+app.post("/api/login", A(async (req, res) => {
+  const ip = req.ip, now = Date.now();
+  const f = fails.get(ip) || { n: 0, t: now };
+  if (now - f.t > 15 * 60e3) { f.n = 0; f.t = now; }
+  if (f.n >= 10) return res.status(429).json({ error: "Sai quá nhiều lần. Thử lại sau 15 phút." });
+  const { username, password } = req.body || {};
+  const u = username ? await store.getUserByUsername(String(username).trim()) : null;
+  if (!u || !u.active || !bcrypt.compareSync(String(password || ""), u.pass_hash)) {
+    f.n++; fails.set(ip, f);
+    return res.status(401).json({ error: "Sai tên đăng nhập hoặc mật khẩu" });
+  }
+  fails.delete(ip); setSession(res, u); audit(u, "login");
+  res.json(publicUser(u));
+}));
+app.post("/api/logout", (req, res) => { res.clearCookie(COOKIE, { path: "/" }); res.status(204).end(); });
+app.get("/api/health", A(async (req, res) => {
+  try { await store.ping(); res.json({ ok: true, db: store.name, time: new Date().toISOString() }); }
+  catch (e) { res.status(503).json({ ok: false, db: store.name, error: "Không kết nối được cơ sở dữ liệu" }); }
+}));
+app.get("/api/me", auth, (req, res) => res.json(publicUser(req.user)));
+/* Frontend gọi khi người dùng thật sự thao tác (chuột/phím/cuộn) – xem resetIdleTimer() – để gia hạn mốc
+   hoạt động, tránh bị auth() ở trên tự đăng xuất do không hoạt động dù cookie còn hạn. */
+app.post("/api/activity", auth, (req, res) => { lastSeen.set(req.user.id, Date.now()); res.status(204).end(); });
+app.post("/api/me/password", auth, A(async (req, res) => {
+  const { current, next } = req.body || {};
+  if (!bcrypt.compareSync(String(current || ""), req.user.pass_hash)) return res.status(400).json({ error: "Mật khẩu hiện tại không đúng" });
+  if (String(next || "").length < 8) return res.status(400).json({ error: "Mật khẩu mới phải có ít nhất 8 ký tự" });
+  await store.updateUser(req.user.id, { pass_hash: bcrypt.hashSync(String(next), 10), token_version: req.user.token_version + 1 });
+  const u = await store.getUserById(req.user.id);
+  setSession(res, u); audit(u, "change-password");
+  res.status(204).end();
+}));
+
+/* --- dữ liệu --- */
+app.get("/api/collection/:coll", auth, A(async (req, res) => {
+  const coll = req.params.coll;
+  if (!COLLECTIONS.has(coll)) return res.status(404).json({ error: "Không có dữ liệu này" });
+  const weekGte = req.query.field === "week" && req.query.gte ? String(req.query.gte) : null;
+  const rows = await store.getDocs(coll, weekGte);
+  res.json(rows.map(r => ({ id: r.doc_id, data: JSON.parse(r.body) })));
+}));
+
+/* Thứ 2 của tuần hiện tại theo giờ máy chủ, dạng YYYY-MM-DD (cùng cách tính với mondayOf(todayISO())
+   phía client ở frontend/js/core/utils.js, để khớp tuần giữa hai bên). */
+function mondayOfToday() {
+  const d = new Date();
+  const wd = (d.getDay() + 6) % 7;
+  d.setDate(d.getDate() - wd);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+/* op: "write" (PUT, gồm cả thêm/sửa/xoá đầu việc bên trong) | "delete" (DELETE, xoá cả dự án) */
+function canWrite(user, coll, id, body, existing, op = "write") {
+  const rule = RULES[coll];
+  if (FULL_ROLES.has(user.role)) return true;
+  if (rule === "member") return true;
+  if (rule === "own-project") {
+    if (!existing) return false; // dự án mới chỉ trưởng phòng tạo được
+    if (existing.created_by === user.username) return true;
+    // TM (phụ trách) hoặc SE của dự án: được sửa dự án và đầu việc, nhưng KHÔNG được xoá cả dự án
+    if (op === "write" && user.staff_name && (existing.owner === user.staff_name || existing.se === user.staff_name)) return true;
+    return false;
+  }
+  if (rule === "own") {
+    if (!existing) return true; // ai cũng tạo mới được
+    return existing.created_by === user.username;
+  }
+  if (rule !== "own-week" || !user.staff_name) return false;
+  const check = b => b && b.person === user.staff_name && id === `${b.week}__${slug(b.person)}`;
+  if (existing && !check(existing)) return false;
+  if (body && !check(body)) return false;
+  /* Chỉ sửa được dữ liệu tuần hiện tại (theo lịch máy chủ); tuần cũ đã khoá, chỉ tài khoản toàn quyền
+     (FULL_ROLES, đã return true ở trên) mới can thiệp được, để tránh chỉnh sửa tuần cũ làm lệch tỉ lệ
+     hoàn thành đã "chốt". */
+  const week = (body && body.week) || (existing && existing.week);
+  if (week && week < mondayOfToday()) return false;
+  return true;
+}
+app.put("/api/doc/:coll/:id", auth, A(async (req, res) => {
+  const { coll, id } = req.params, body = req.body;
+  if (!COLLECTIONS.has(coll) || !ID_RE.test(id)) return res.status(400).json({ error: "Đường dẫn không hợp lệ" });
+  if (!body || typeof body !== "object" || Array.isArray(body)) return res.status(400).json({ error: "Dữ liệu không hợp lệ" });
+  const p = `${coll}/${id}`;
+  const ex = await store.getDoc(p);
+  const exBody = ex && JSON.parse(ex);
+  if (!canWrite(req.user, coll, id, body, exBody, "write")) return res.status(403).json({ error: "Bạn không có quyền sửa phần này" });
+  if (coll === "projects") {
+    body.created_by = exBody ? (exBody.created_by ?? null) : req.user.username;
+    // Đánh giá khi hoàn thành (task.eval) và Ghi chú của trưởng phòng (task.note) chỉ trưởng phòng
+    // được ghi; nhân viên gửi gì cũng giữ nguyên giá trị cũ (ẩn/khoá ô nhập ở giao diện chỉ là gợi ý,
+    // quyền thật sự phải chặn ở đây)
+    if (!FULL_ROLES.has(req.user.role) && exBody) {
+      const exTasks = new Map((exBody.tasks || []).map(t => [t.id, t]));
+      for (const t of body.tasks || []) {
+        const ex = exTasks.get(t.id) || {};
+        t.eval = ex.eval ?? {};
+        t.note = ex.note ?? "";
+      }
+    }
+  }
+  if (coll === "feedback") {
+    // created_by/person/createdAt luôn do máy chủ ghi, không nhận từ client, và không đổi được sau khi tạo
+    body.created_by = exBody ? exBody.created_by : req.user.username;
+    body.person = exBody ? exBody.person : (req.user.staff_name || req.user.display_name || req.user.username);
+    body.createdAt = exBody ? exBody.createdAt : new Date().toISOString();
+  }
+  await store.upsertDoc(p, coll, id, JSON.stringify(body), req.user.username);
+  audit(req.user, "set", p); broadcast(coll);
+  res.status(204).end();
+}));
+/* Đồng bộ "Độ phức tạp" từ Nhập theo tuần vào đúng đầu việc ở Kế hoạch dự án. Phạm vi hẹp có chủ đích:
+   chỉ sửa trường pt của một đầu việc, không đụng gì khác trong dự án — nên cho phép cả nhân viên chỉ là
+   phụ trách/phối hợp của đúng đầu việc đó (không cần là TM/SE/người tạo cả dự án) tự đánh giá độ khó
+   việc mình làm. Vẫn phải qua auth, không phải "ai cũng sửa được bất cứ gì". */
+app.patch("/api/doc/projects/:id/task-pt", auth, A(async (req, res) => {
+  const { id } = req.params;
+  const { taskId, pt } = req.body || {};
+  if (!ID_RE.test(id) || typeof taskId !== "string" || !(pt === null || (Number.isInteger(pt) && pt >= 1 && pt <= 5)))
+    return res.status(400).json({ error: "Dữ liệu không hợp lệ" });
+  const p = `projects/${id}`;
+  const ex = await store.getDoc(p);
+  if (!ex) return res.status(404).json({ error: "Không tìm thấy dự án" });
+  const body = JSON.parse(ex);
+  const task = (body.tasks || []).find(t => t.id === taskId);
+  if (!task) return res.status(404).json({ error: "Không tìm thấy đầu việc" });
+  const u = req.user;
+  const allowed = FULL_ROLES.has(u.role) || body.created_by === u.username
+    || (u.staff_name && (body.owner === u.staff_name || body.se === u.staff_name))
+    || (u.staff_name && (task.owner === u.staff_name || task.collab === u.staff_name));
+  if (!allowed) return res.status(403).json({ error: "Bạn không có quyền sửa đầu việc này" });
+  task.pt = pt;
+  await store.upsertDoc(p, "projects", id, JSON.stringify(body), u.username);
+  audit(u, "set", p); broadcast("projects");
+  res.status(204).end();
+}));
+/* Đồng bộ "Ghi chú của trưởng phòng" giữa Nhập theo tuần và Kế hoạch dự án – cả 2 nơi đọc/ghi cùng 1
+   trường task.note nên tự động khớp nhau 2 chiều, không cần đồng bộ riêng gì thêm ngoài route này. Chỉ
+   trưởng phòng/phó phòng/admin (FULL_ROLES) ghi được, khớp đúng quyền đã có sẵn ở taskForm (plan.js) và
+   PUT /api/doc/projects/:id (chặn nhân viên ghi t.note dù PUT cả dự án). Phạm vi hẹp: chỉ sửa đúng
+   trường note của 1 đầu việc, giống cách task-pt ở trên đồng bộ Độ phức tạp. */
+app.patch("/api/doc/projects/:id/task-note", auth, A(async (req, res) => {
+  if (!FULL_ROLES.has(req.user.role)) return res.status(403).json({ error: "Chỉ trưởng phòng/phó phòng được ghi chú này" });
+  const { id } = req.params;
+  const { taskId, note } = req.body || {};
+  if (!ID_RE.test(id) || typeof taskId !== "string" || typeof note !== "string")
+    return res.status(400).json({ error: "Dữ liệu không hợp lệ" });
+  const p = `projects/${id}`;
+  const ex = await store.getDoc(p);
+  if (!ex) return res.status(404).json({ error: "Không tìm thấy dự án" });
+  const body = JSON.parse(ex);
+  const task = (body.tasks || []).find(t => t.id === taskId);
+  if (!task) return res.status(404).json({ error: "Không tìm thấy đầu việc" });
+  task.note = note;
+  await store.upsertDoc(p, "projects", id, JSON.stringify(body), req.user.username);
+  audit(req.user, "set", p); broadcast("projects");
+  res.status(204).end();
+}));
+app.delete("/api/doc/:coll/:id", auth, A(async (req, res) => {
+  const { coll, id } = req.params;
+  if (!COLLECTIONS.has(coll) || !ID_RE.test(id)) return res.status(400).json({ error: "Đường dẫn không hợp lệ" });
+  const p = `${coll}/${id}`;
+  const ex = await store.getDoc(p);
+  if (!ex) return res.status(204).end();
+  if (!canWrite(req.user, coll, id, null, JSON.parse(ex), "delete")) return res.status(403).json({ error: "Bạn không có quyền xoá phần này" });
+  await store.deleteDoc(p);
+  audit(req.user, "delete", p); broadcast(coll);
+  res.status(204).end();
+}));
+app.get("/api/events", auth, (req, res) => {
+  res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" });
+  res.write("retry: 5000\n\n");
+  clients.add(res);
+  req.on("close", () => clients.delete(res));
+});
+
+/* --- sao lưu / khôi phục (trưởng phòng) --- */
+app.get("/api/backup", auth, adminOnly, A(async (req, res) => {
+  const data = {};
+  for (const r of await store.allDocs()) data[r.path] = JSON.parse(r.body);
+  const name = `Sao-luu-theo-doi-cong-viec-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}.json`;
+  res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
+  res.json({ app: "ptkt", version: 1, exported: new Date().toISOString(), data });
+}));
+app.post("/api/restore", auth, adminOnly, A(async (req, res) => {
+  const data = req.body && req.body.data;
+  if (!data || typeof data !== "object" || !Object.keys(data).some(k => k.startsWith("projects/")))
+    return res.status(400).json({ error: "File không đúng định dạng sao lưu" });
+  const rows = [];
+  for (const [p, body] of Object.entries(data)) {
+    const [coll, id] = p.split("/");
+    if (!COLLECTIONS.has(coll) || !ID_RE.test(id || "")) continue;
+    rows.push({ path: p, collection: coll, doc_id: id, body: JSON.stringify(body) });
+  }
+  await store.replaceAllDocs(rows, req.user.username);
+  audit(req.user, "restore"); broadcast("*");
+  res.status(204).end();
+}));
+
+/* --- nhật ký cập nhật (trưởng phòng) – lưu vết ai sửa/xoá gì và lúc nào, kể cả Nhập theo tuần --- */
+app.get("/api/audit", auth, adminOnly, A(async (req, res) => {
+  const rows = await store.listAudit(Math.min(Number(req.query.limit) || 200, 1000));
+  res.json(rows);
+}));
+
+/* --- quản lý tài khoản ---
+   Danh sách (GET) mở cho MỌI tài khoản đã đăng nhập (kể cả nhân viên) – chỉ ẩn riêng tài khoản "admin"
+   (hệ thống) với người xem không phải admin. Tạo mới (POST) vẫn chỉ trưởng phòng/phó phòng/admin.
+   Sửa (PATCH): trưởng phòng/phó phòng/admin sửa được tài khoản cấp ≤ mình (ROLE_RANK); nhân viên chỉ
+   sửa được ĐÚNG tài khoản của chính mình, và chỉ 3 trường an toàn (tên đăng nhập/tên hiển thị/mật khẩu)
+   – không tự đổi được vai trò/trạng thái/nhân sự gắn (tránh tự nâng quyền hoặc đổi danh tính). */
+app.get("/api/users", auth, A(async (req, res) => {
+  const rows = await store.listUsers();
+  const visible = req.user.role === "admin" ? rows : rows.filter(u => u.role !== "admin");
+  res.json(visible.map(publicUser));
+}));
+app.post("/api/users", auth, adminOnly, A(async (req, res) => {
+  const { username, password, display_name, staff_name, role } = req.body || {};
+  if (!/^[A-Za-z0-9._-]{3,40}$/.test(String(username || ""))) return res.status(400).json({ error: "Tên đăng nhập 3–40 ký tự, chỉ gồm chữ không dấu, số, dấu . _ -" });
+  if (String(password || "").length < 8) return res.status(400).json({ error: "Mật khẩu phải có ít nhất 8 ký tự" });
+  // Không tạo được tài khoản cấp cao hơn chính mình (và "admin" luôn chỉ tạo được qua CLI, không qua đây)
+  if (!["head", "deputy", "member"].includes(role) || ROLE_RANK[role] > ROLE_RANK[req.user.role])
+    return res.status(400).json({ error: "Vai trò không hợp lệ" });
+  if (await store.getUserByUsername(username)) return res.status(400).json({ error: "Tên đăng nhập đã tồn tại" });
+  const id = await store.createUser({ username, pass_hash: bcrypt.hashSync(String(password), 10), display_name: String(display_name || username), staff_name: staff_name || null, role });
+  audit(req.user, "user-create", username);
+  res.json(publicUser(await store.getUserById(id)));
+}));
+app.patch("/api/users/:id", auth, A(async (req, res) => {
+  const u = await store.getUserById(Number(req.params.id));
+  if (!u) return res.status(404).json({ error: "Không tìm thấy tài khoản" });
+  const isSelf = u.id === req.user.id;
+  // "Quản lý được" = trưởng phòng/phó phòng/admin sửa tài khoản cấp ≤ mình (bao hàm admin: chỉ chính
+  // admin mới đủ cấp sửa tài khoản admin khác). Nhân viên không quản lý được ai, kể cả chính mình theo
+  // nghĩa này — chỉ có nhánh "tự sửa" riêng (isSelf) bên dưới, giới hạn 3 trường an toàn.
+  const canManage = FULL_ROLES.has(req.user.role) && ROLE_RANK[u.role] <= ROLE_RANK[req.user.role];
+  if (!isSelf && !canManage) return res.status(403).json({ error: "Bạn không có quyền sửa tài khoản này" });
+  const b = req.body || {};
+  const role = canManage ? (b.role ?? u.role) : u.role;
+  const active = canManage ? (b.active === undefined ? u.active : (b.active ? 1 : 0)) : u.active;
+  const staffName = canManage ? ((b.staff_name ?? u.staff_name) || null) : u.staff_name;
+  if (!(role in ROLE_RANK) || ROLE_RANK[role] > ROLE_RANK[req.user.role]) return res.status(400).json({ error: "Vai trò không hợp lệ" });
+  if (FULL_ROLES.has(u.role) && (!FULL_ROLES.has(role) || !active) && (await store.countActiveAdmins()) <= 1)
+    return res.status(400).json({ error: "Phải còn ít nhất một tài khoản trưởng phòng/phó phòng đang hoạt động" });
+  const username = b.username === undefined ? u.username : String(b.username).trim();
+  if (!/^[A-Za-z0-9._-]{3,40}$/.test(username)) return res.status(400).json({ error: "Tên đăng nhập 3–40 ký tự, chỉ gồm chữ không dấu, số, dấu . _ -" });
+  if (username !== u.username) {
+    const dup = await store.getUserByUsername(username);
+    if (dup && dup.id !== u.id) return res.status(400).json({ error: "Tên đăng nhập đã tồn tại" });
+  }
+  let tv = u.token_version, hash = u.pass_hash;
+  if (role !== u.role || username !== u.username) tv++;   // đổi vai trò/tên đăng nhập: buộc đăng nhập lại
+  if (b.password) {
+    if (String(b.password).length < 8) return res.status(400).json({ error: "Mật khẩu phải có ít nhất 8 ký tự" });
+    hash = bcrypt.hashSync(String(b.password), 10); tv++;
+  }
+  if (!active && u.active) tv++;
+  await store.updateUser(u.id, { username, display_name: String(b.display_name ?? u.display_name), staff_name: staffName, role, active, pass_hash: hash, token_version: tv });
+  audit(req.user, "user-update", u.username);
+  res.json(publicUser(await store.getUserById(u.id)));
+}));
+
+/* --- giao diện --- */
+app.use(express.static(path.join(__dirname, "..", "frontend"), {
+  index: "index.html",
+  setHeaders: (res, file) => { if (file.endsWith(".html")) res.setHeader("Cache-Control", "no-cache"); }
+}));
+app.use("/api", (req, res) => res.status(404).json({ error: "Không tìm thấy" }));
+app.use((err, req, res, next) => {
+  console.error(err);
+  if (err.type === "entity.too.large") return res.status(413).json({ error: "Dữ liệu quá lớn" });
+  if (res.headersSent) return;
+  res.status(500).json({ error: "Lỗi máy chủ" });
+});
+
+/* ---------------- khởi động ---------------- */
+let server;
+async function seedIfEmpty() {
+  const seedFile = path.join(__dirname, "seed", "seed.json");
+  if ((await store.countDocs()) > 0 || !fs.existsSync(seedFile)) return;
+  const seed = JSON.parse(fs.readFileSync(seedFile, "utf8"));
+  const rows = Object.entries(seed).map(([p, body]) => { const [coll, id] = p.split("/"); return { path: p, collection: coll, doc_id: id, body: JSON.stringify(body), updated_by: "seed" }; });
+  await store.replaceAllDocs(rows, "seed");
+  console.log(`[seed] Đã nạp ${rows.length} tài liệu dữ liệu ban đầu.`);
+}
+(async () => {
+  try {
+    await store.init();
+    await seedIfEmpty();
+  } catch (e) {
+    console.error(`[LỖI] Không kết nối / khởi tạo được cơ sở dữ liệu ${store.name} (${store.describe()}): ${e.code || ""} ${e.message}`);
+    console.error("       Kiểm tra các dòng DB_* trong file .env và dịch vụ cơ sở dữ liệu.");
+    process.exit(1);
+  }
+  server = app.listen(PORT, HOST, async () => {
+    console.log(`[ptkt] Đang chạy tại http://${HOST}:${PORT}  (CSDL: ${store.name} – ${store.describe()})`);
+    if (!(await store.countAdmins())) console.log("[ptkt] Chưa có tài khoản trưởng phòng. Chạy: npm run user -- create");
+  });
+})();
+function shutdown() {
+  console.log("[ptkt] Đang dừng…");
+  for (const r of clients) { try { r.end(); } catch (e) {} }
+  const done = () => store.close().catch(() => {}).finally(() => process.exit(0));
+  if (server) server.close(done); else done();
+  setTimeout(() => process.exit(0), 4000).unref();
+}
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
