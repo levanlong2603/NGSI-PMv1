@@ -4,9 +4,8 @@
 /* Mảng "Cần ưu tiên xử lý" của lần render gần nhất – xem chỗ gán trong viewExec() và ACTIONS["exinfo"]. */
 let EX_ACT = [];
 /* "Xem chi tiết" ở "CẦN ƯU TIÊN XỬ LÝ": chỉ mở popup xem thông tin (readOnly), không điều hướng sang
-   trang khác – đầu việc dùng lại đúng khung openInfo() đã có (giống dashtask ở Tổng quan dự án); nhân
-   sự quá tải/dự án rủi ro cao thì dựng popup nhẹ ngay từ dữ liệu đã hiện sẵn trên dòng đó (a.title/desc),
-   không cần tính lại. */
+   trang khác – đầu việc dùng lại đúng khung openInfo() đã có (plan.js); nhân sự quá tải/dự án rủi ro cao
+   thì dựng popup nhẹ ngay từ dữ liệu đã hiện sẵn trên dòng đó (a.title/desc), không cần tính lại. */
 ACTIONS["exinfo"] = t => {
   const a = EX_ACT[+t.dataset.i]; if(!a) return;
   const g = a.go || "";

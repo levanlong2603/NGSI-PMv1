@@ -1,5 +1,6 @@
 "use strict";
-/* Màn hình: Dự án – gộp "Tổng quan dự án" (chỉ xem) và "Kế hoạch dự án" (quản trị, plan.js) thành 1 mục
+/* Màn hình: Dự án – gộp "Tổng quan dự án" (xem nhanh toàn bộ dự án dạng bảng, có menu ⋮ mở nhanh "Sửa
+   thông tin" nhưng không sửa/xoá đầu việc tại đây) và "Kế hoạch dự án" (quản trị đầy đủ, plan.js) thành 1 mục
    menu "Dự án" với 2 tab ngang hàng (S.projTab, dùng chung .rp-tabs với Báo cáo – reports.js). Tách thanh
    công cụ (toolbar, lên hàng tiêu đề chung) khỏi nội dung từng tab (content), đúng kiểu reports.js:
    viewReports(). Giữ nguyên 2 bộ lọc/trạng thái độc lập của 2 tab (S.dashQuery/S.typeFilter cho Tổng quan,
@@ -48,40 +49,95 @@ function dashContent(){
     <div class="stat ${late.length?"bad":""}"><div class="v">${late.length}</div><div class="l">Đầu việc quá hạn</div></div>
     <div class="stat ${soon.length?"warn":""}"><div class="v">${soon.length}</div><div class="l">Đến hạn trong 14 ngày</div></div>
     <div class="stat ${stuck.length?"warn":""}"><div class="v">${stuck.length}</div><div class="l">Đầu việc đang vướng</div></div></div>`;
-  let left = "";
-  for(const f of PLAN_FILTERS){
-    if(f.key==="Tất cả") continue;
-    if(S.typeFilter!=="Tất cả" && S.typeFilter!==f.key) continue;
-    const ps = P.filter(p=>planMatchFilter(p, f.key) && (!q || p.name.toLowerCase().includes(q))).sort((a,b)=>(b._stuck-a._stuck) || (b._late-a._late) || a.name.localeCompare(b.name,"vi"));
-    left += `<section class="panel"><div class="panel-h"><h2>${typeDot(f.type)}${esc(f.label)} <span class="muted small">· ${ps.length}</span></h2></div>`;
-    if(!ps.length) left += `<div class="empty">${q?`Không có ${f.label.toLowerCase()} nào khớp “${esc(S.dashQuery)}”.`:`Chưa có ${f.label.toLowerCase()} nào. Thêm ở tab "Kế hoạch dự án".`}</div>`;
-    for(const p of ps){
-      const open = S.openProject===p.id;
-      left += `<div class="prow" data-act="openp" data-id="${esc(p.id)}" role="button" tabindex="0" aria-expanded="${open}">
-        <div><div class="nm">${esc(p.name)}</div><div class="ow">${esc(p.owner||"Chưa có người phụ trách")}</div></div>
-        <div><div class="pct">${pct(p._prog)}</div><div class="pbar"><i style="width:${Math.round((p._prog||0)*100)}%"></i></div></div>
-        <div class="next small"><div class="muted">Mốc tiếp theo</div><div style="font-weight:600">${p._next?dmy(p._next):"–"}</div></div>
-        <div class="strip-cell">${strip(p, "dash|"+p.id, "openProject")}</div>
-        <div class="badges">${p._late?`<span class="pill bad">${p._late} quá hạn</span>`:""}${p._stuck?`<span class="pill warn">${p._stuck} vướng</span>`:""}${p._soon?`<span class="pill info">${p._soon} sắp hạn</span>`:""}${!(p.tasks||[]).length?'<span class="pill mute">Chưa có đầu việc</span>':!p._late&&!p._stuck&&!p._soon?'<span class="pill ok">Đúng tiến độ</span>':""}</div>
-      </div>`;
-      if(open) left += projectDetail(p);
-    }
-    left += `</section>`;
-  }
-  return h + left;
+  return h + ovTable(P, q);
 }
-function projectDetail(p){
-  /* data-act="dashtask" → luôn mở xem (openInfo), không bao giờ mở form sửa, kể cả trưởng phòng: Tổng quan dự án chỉ để xem */
-  const dashRow = (t,i,lvl=1) => { const idle = t.status==="Chưa bắt đầu"; return `<tr class="click${idle?" tr-idle":""}" data-act="dashtask" data-pid="${esc(p.id)}" data-id="${esc(t.id)}" tabindex="0" title="${esc(t.dv)}"><td style="padding-left:${10+lvl*32}px"><div class="cell-main">${esc(planShortName(t.dv))}</div>${t.detail&&!idle?`<div class="cell-sub">${esc(t.detail)}</div>`:""}${t.upd?`<div class="cell-sub">${esc(t.upd)}</div>`:""}${t.note?`<div class="cell-sub" style="color:var(--teal-hover)">Ghi chú TrP: ${esc(t.note)}</div>`:""}</td>
-    <td>${esc(t.owner||"–")}</td><td>${t.doers.length?t.doers.map(esc).join(", "):"–"}</td><td>${t.deadline?dmy(t.deadline):"–"}</td><td>${stPill(t.status)}</td>
-    <td>${warnPills(t.warns)}</td></tr>`; };
-  const rows = planTreeRows(p, {scope:"dash|"+p.id, cols:6, row:dashRow, edit:false});
-  return `<div class="pdetail">
-    <div class="row2" style="margin:12px 0">
-      <div><div class="small muted" style="margin-bottom:4px">Mốc hợp đồng</div><div class="note">${esc(p.milestones||"–")}</div></div>
-      <div><div class="small muted" style="margin-bottom:4px">Tình hình / vướng mắc chung</div><div class="note">${esc(p.situation||"–")}</div></div></div>
-    <div class="tbl-wrap panel"><table style="table-layout:fixed"><thead><tr><th style="width:34%">Đầu việc</th><th style="width:14%">Phụ trách</th><th style="width:14%">Thực hiện</th><th style="width:12%">Deadline</th><th style="width:13%">Trạng thái</th><th style="width:13%">Cảnh báo</th></tr></thead><tbody>${rows||'<tr><td colspan="6" class="muted">Chưa có đầu việc.</td></tr>'}</tbody></table></div>
-    <div style="margin-top:10px"><button class="btn" data-act="goplan" data-id="${esc(p.id)}">Mở kế hoạch dự án</button></div></div>`;
+/* Ngày bắt đầu/kết thúc "của cả dự án" không có trường riêng (dự án không lưu field này) – suy từ đầu việc
+   THẬT của dự án: sớm nhất trong "Kế hoạch theo HĐ – Bắt đầu" (t.hdStart) và muộn nhất trong "…– Kết thúc"
+   (t.deadline, xem plan.js). Dự án chưa có đầu việc nào có ngày → "–". */
+function projDateRange(p){
+  const starts = (p._tasks||[]).map(t=>t.hdStart).filter(Boolean).sort();
+  const ends = (p._tasks||[]).map(t=>t.deadline).filter(Boolean).sort();
+  return {start: starts[0]||null, end: ends[ends.length-1]||null};
+}
+function projStatusText(p){
+  if(planIsDone(p)) return ["Hoàn thành","ok"];
+  if(p._prog==null || p._prog===0) return ["Chưa bắt đầu","mute"];
+  return ["Đang thực hiện","info"];
+}
+/* Bảng danh sách dự án (Tổng quan dự án) – đúng theo mẫu người dùng đưa (#/Tên dự án/Khách hàng/PM/Bắt
+   đầu/Kết thúc/% HT/Trạng thái/Đánh giá/⋮), gộp hết các loại dự án vào 1 bảng duy nhất (không còn chia
+   theo Loại thành từng khối/tiêu đề riêng như trước – đã bỏ theo yêu cầu người dùng), sắp theo cột đang
+   chọn (S.ovSort). "Khách hàng" = `p.client` (trường mới, nhập ở `projectForm()`, plan.js – dự án cũ
+   trước khi có trường này hiện rỗng/"–"). KHÔNG có cột "Mã dự án" (đã bỏ theo yêu cầu người dùng – `p.id`
+   là slug tự sinh từ tên, dài và không có ý nghĩa để hiển thị, vd "p-du-an-nang-cao-..."); tên dự án tô
+   màu teal thay vào vị trí "liên kết" đó. Bấm vào 1 dòng (ngoài menu ⋮) đi thẳng sang tab "Kế hoạch dự án"
+   của đúng dự án đó (data-act="goplan", core/events.js). Menu ⋮ (S.ovMenuOpen, giữ id dự án đang mở – chỉ
+   1 menu mở tại 1 thời điểm) cho "Xem chi tiết" (giống hệt bấm dòng) và "Sửa thông tin" (mở thẳng
+   projectForm(p), plan.js – chỉ hiện nếu canManageProject(p), cùng điều kiện với nút "Sửa thông tin" ở Kế
+   hoạch dự án) – KHÔNG có "Xoá dự án" ở đây, vẫn phải vào Kế hoạch dự án để xoá (hành động phá huỷ, cố
+   tình không đặt ở màn xem nhanh). */
+const OV_SORT = {
+  name: p=>p.name.toLowerCase(),
+  client: p=>(p.client||"").toLowerCase(),
+  pm: p=>(p.pm||p.owner||"").toLowerCase(),
+  start: p=>projDateRange(p).start||"",
+  end: p=>projDateRange(p).end||"",
+  prog: p=>p._prog??-1,
+};
+ACTIONS["ovsort"] = el => {
+  const k = el.dataset.k;
+  S.ovSort = (S.ovSort && S.ovSort.key===k) ? {key:k, dir:S.ovSort.dir==="asc"?"desc":"asc"} : {key:k, dir:"asc"};
+  render();
+};
+ACTIONS["ovmenu"] = el => { S.ovMenuOpen = S.ovMenuOpen===el.dataset.id ? null : el.dataset.id; render(); };
+ACTIONS["ovedit"] = el => { S.ovMenuOpen = null; const p = M.pById.get(el.dataset.id); if(p) projectForm(p); };
+/* Bấm ra ngoài menu ⋮ thì tự đóng – cùng cách làm với .rp-export (nút "Xuất báo cáo", reports.js) */
+document.addEventListener("click", e => {
+  if(S.ovMenuOpen && !e.target.closest(".ov-menu")){ S.ovMenuOpen = null; render(); }
+});
+function ovTable(P, q){
+  const filt = S.typeFilter || "Tất cả";
+  let ps = P.filter(p=>planMatchFilter(p, filt) && (!q || p.name.toLowerCase().includes(q)));
+  const sort = S.ovSort || {key:"name", dir:"asc"};
+  const sf = OV_SORT[sort.key] || OV_SORT.name;
+  ps = [...ps].sort((a,b)=>{ const av=sf(a), bv=sf(b); const cmp = av<bv?-1:av>bv?1:0; return sort.dir==="asc"?cmp:-cmp; });
+  const sortIco = k => sort.key!==k ? "↕" : (sort.dir==="asc"?"▲":"▼");
+  const th = (k,label) => `<th data-act="ovsort" data-k="${k}" style="cursor:pointer; user-select:none">${label} <span class="small muted">${sortIco(k)}</span></th>`;
+  /* KHÔNG dùng .tbl-wrap{overflow-x:auto} (base.css) cho bảng này – menu ⋮ bên dưới là position:absolute,
+     bị overflow:auto/hidden của cha cắt mất (hiện 1 mẩu kèm thanh cuộn riêng thay vì nổi tự do như mong
+     đợi). Bảng này không nhiều cột bằng Kế hoạch dự án nên không thật cần cuộn ngang riêng – overflow:visible
+     để menu thoát ra ngoài bình thường, lỡ màn quá hẹp thì cuộn cả trang thay vì cuộn trong khung bảng. */
+  let out = `<section class="panel"><div class="tbl-wrap" style="overflow:visible"><table><thead><tr>
+    <th style="width:36px">#</th>${th("name","Tên dự án")}${th("client","Khách hàng")}${th("pm","PM")}${th("start","Bắt đầu")}${th("end","Kết thúc")}${th("prog","% HT")}<th>Trạng thái</th><th>Đánh giá</th><th style="width:36px"></th>
+    </tr></thead><tbody>`;
+  if(!ps.length){
+    out += `<tr><td colspan="10"><div class="empty">${q?`Không có dự án nào khớp “${esc(S.dashQuery)}”.`:'Chưa có dự án nào. Thêm ở tab "Kế hoạch dự án".'}</div></td></tr>`;
+  }
+  ps.forEach((p,i) => {
+    const dr = projDateRange(p);
+    const [stText, stTone] = projStatusText(p);
+    const menuOpen = S.ovMenuOpen===p.id;
+    out += `<tr class="click" data-act="goplan" data-id="${esc(p.id)}" tabindex="0">
+      <td class="small muted">${i+1}</td>
+      <td><div class="cell-main" style="color:var(--teal-hover)">${esc(p.name)}</div><div class="small muted">${esc(p.type)}</div></td>
+      <td>${esc(p.client||"–")}</td>
+      <td>${esc(p.pm||p.owner||"–")}</td>
+      <td>${dr.start?dmy(dr.start):"–"}</td>
+      <td>${dr.end?dmy(dr.end):"–"}</td>
+      <td><div class="pct" style="font-size:13px; font-weight:700">${pct(p._prog)}</div><div class="pbar" style="width:80px"><i style="width:${Math.round((p._prog||0)*100)}%"></i></div></td>
+      <td><span class="pill ${stTone}">${stText}</span></td>
+      <td>${p._late?'<span class="pill bad">Chậm tiến độ</span>':'<span class="pill ok">Đúng tiến độ</span>'}</td>
+      <td class="ov-menu" style="position:relative">
+        <button class="btn icon" type="button" data-act="ovmenu" data-id="${esc(p.id)}" aria-haspopup="true" aria-expanded="${menuOpen}" title="Thao tác">⋮</button>
+        ${menuOpen ? `<div class="tb-dropdown tb-dropdown-r" style="min-width:170px">
+          <button class="tb-item" type="button" data-act="goplan" data-id="${esc(p.id)}">Xem chi tiết</button>
+          ${canManageProject(p)?`<button class="tb-item" type="button" data-act="ovedit" data-id="${esc(p.id)}">Sửa thông tin</button>`:""}
+        </div>` : ""}
+      </td>
+      </tr>`;
+  });
+  out += `</tbody></table></div></section>`;
+  return out;
 }
 
 

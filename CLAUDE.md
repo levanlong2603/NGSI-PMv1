@@ -47,6 +47,13 @@ PM sau này bám đúng thực tế):
     án – đây là ý tưởng tham khảo nếu sau này làm Gantt theo tuần thay cho thanh tiến độ hiện tại.
   Lưu ý: đây là **tài liệu tham khảo nghiệp vụ**, không phải đặc tả kỹ thuật – không tự ý đổi mô hình
   dữ liệu `projects`/`weeks` hiện có theo mẫu này nếu người dùng chưa yêu cầu rõ.
+  **Cập nhật**: 4 cặp mốc ngày song song ở trên **đã triển khai thật** trong `task` (xem mục "Quy ước bắt
+  buộc" bên dưới), và Kế hoạch dự án có nút **"Nhập Excel"** (`planImportExcel()`, `plan.js`) đọc thẳng
+  đúng 2 sheet `Infor`+`NGSI` này qua ExcelJS (tải lười giống `rpEnsureExcel()` ở `reports.js`, bản sao
+  riêng tiền tố `plan` – xem bên dưới) để tạo 1 dự án mới kèm toàn bộ đầu việc, không cần gõ tay lại. Cột
+  "ƯU TIÊN" của file **bị bỏ qua có chủ đích** (yêu cầu người dùng) – ưu tiên từng đầu việc lấy theo đúng
+  `no` khớp trong "Khung mẫu" (`config/catalog`) của Loại dự án chọn ở form xác nhận, không theo giá trị
+  trong file; không khớp được thì mặc định P2 ("Bình thường"). Sheet `Report` chưa dùng tới khi nhập.
 
 ## Kiến trúc
 - **Bố cục**: `backend/` máy chủ (server.js, lib/store.js, seed/, scripts/) · `frontend/` giao diện tĩnh (index.html, css/, js/) · `deploy/` systemd + Nginx + script vận hành. Frontend và backend tách thư mục nhưng **cùng một tiến trình Node**: Express phục vụ `frontend/` dưới dạng tệp tĩnh (`backend/server.js`), không có bước build và không có `package.json` riêng cho frontend.
@@ -93,8 +100,11 @@ nút `+`/`✕` mỗi dòng (`ACTIONS["addcatrow"]`/`["delcatrow"]`) chèn/xoá n
   dự án mới (`projectForm()`, `plan.js`), **mọi** dòng catalog của loại dự án đó được copy 1-1 thành đầu
   việc thật (`no`→`task.no`, `name`→`task.dv`, `pr` Cao/Bình thường → `task.pr` P1/P2), người phụ trách
   (`task.owner`) lấy theo nhân sự được gán đúng `role` đó trên dự án (`p.pm`/`p.tm`/`p.am`/`p.acc` – 4
-  trường mới, chọn trong `projectForm()`, **không** liên quan `p.owner`/`p.se` cũ vẫn giữ nguyên cho quyền
-  ghi `own-project`/`projectAssigned()`).
+  trường mới, **gõ tay** (`type:"text"`, không phải `select`) trong `projectForm()` – nhiều dự án nhập từ
+  Excel có PM/TM/AM/ACC là tên viết tắt/tài khoản (vd "Lydk") không khớp tên đầy đủ trong `config/staff`,
+  `select` sẽ luôn hiện trống không gõ được; `task.owner` ở `taskForm()` cũng chọn theo đúng 4 chuỗi này
+  (`ownerOpts`, so khớp chuỗi thuần, không cần khớp `S.staff`)), **không** liên quan `p.owner`/`p.se` cũ vẫn
+  giữ nguyên cho quyền ghi `own-project`/`projectAssigned()`).
 - **"Hạng mục" (`task.phase`) ĐÃ BỊ BỎ, luôn là chuỗi rỗng** – từng thử suy luận tự động bằng cách duyệt
   `p.tasks` và coi `no` thuần 1–2 chữ cái (vd `"A"`) là dòng mở hạng mục mới, nhưng số La Mã (`"I"`, `"II"`…)
   cũng thuần chữ cái nên **không phân biệt được** với chữ cái dùng làm mã hạng mục bằng text thuần tuý —
@@ -155,14 +165,36 @@ nút `+`/`✕` mỗi dòng (`ACTIONS["addcatrow"]`/`["delcatrow"]`) chèn/xoá n
 - Nhân sự (`S.staff`, `config/staff`) có các trường tuỳ chọn cộng dồn qua nhiều lần mở rộng: `years` (kinh
   nghiệm, chỉ gợi ý), `factor` (hệ số năng lực, 5 mức cố định), `title` (chức danh, dùng cho KPI & Năng
   lực Giai đoạn 2) – tài liệu cũ thiếu trường nào thì coi như rỗng/0, không cần script chuyển đổi.
-- Dự án (`projects/<id>`) có 2 trường tường thuật hiện ở Kế hoạch dự án/Tổng quan dự án: `milestones` (Mốc
-  hợp đồng), `situation` (Tình hình/vướng mắc chung); và 2 trường thêm sau, nhập chung 1 form `projectForm`
-  (plan.js) nhưng **chỉ hiện ở Báo cáo → Báo cáo tổng hợp dự án**, không hiện lại ở thẻ dự án: `progress`
-  (Tiến độ hiện tại), `proposal` (Đề xuất) – cố ý tách theo yêu cầu người dùng, đừng gộp lại khi sửa; và 4
-  trường vai trò `pm`/`tm`/`am`/`acc` (tên nhân sự, chọn trong `projectForm`) dùng để tự gán người phụ
-  trách cho đầu việc sinh từ khung mẫu theo `catalog.role` (xem mục "Khung mẫu" ở trên) – **độc lập** với
-  `owner`/`se` cũ (vẫn là 2 trường duy nhất `RULES`/`projectAssigned()` dùng để tính quyền ghi), không gộp
-  hay thay thế `owner` bằng `tm` dù ý nghĩa gần giống nhau.
+- Dự án (`projects/<id>`) có 2 trường tường thuật `milestones` (Mốc hợp đồng), `situation` (Tình hình/
+  vướng mắc chung) – **không còn hiện** ở Kế hoạch dự án/Tổng quan dự án (bỏ theo yêu cầu người dùng, 2 ô
+  này là tàn dư thiết kế cũ "Phòng Kỹ thuật"), chỉ còn sửa được ở form "Sửa thông tin dự án" (`projectForm`,
+  plan.js) và đọc lại ở Báo cáo → Báo cáo tổng hợp dự án (cột "Mốc HĐ"/"Vướng mắc", `reports.js`) – dữ liệu
+  cũ của dự án có sẵn vẫn giữ nguyên, đừng xoá trường hay bớt field khỏi `projectForm`/`reports.js`. 2 trường
+  thêm sau, nhập chung 1 form `projectForm` nhưng **chỉ hiện ở Báo cáo → Báo cáo tổng hợp dự án**, không hiện
+  lại ở thẻ dự án: `progress` (Tiến độ hiện tại), `proposal` (Đề xuất) – cố ý tách theo yêu cầu người dùng,
+  đừng gộp lại khi sửa; và 4 trường vai trò `pm`/`tm`/`am`/`acc` (tên nhân sự, ô text gõ tay trong `projectForm`)
+  dùng để tự gán người phụ trách cho đầu việc sinh từ khung mẫu theo `catalog.role` (xem mục "Khung mẫu" ở
+  trên). `owner`/`se` (2 trường duy nhất `RULES`/`projectAssigned()` server.js/constants.js dùng để tính
+  quyền ghi `own-project`) **không còn ô nhập tay riêng** trong `projectForm` nữa (bỏ theo yêu cầu người
+  dùng – trùng việc với khối Vai trò dự án, web không còn là web riêng Phòng Kỹ thuật): `onSave` tự gán
+  `owner = tm || pm || ""`, `se = ""` vĩnh viễn – cột "SE" ở Báo cáo tổng hợp dự án (`reports.js`) sẽ rỗng
+  với mọi dự án tạo/sửa từ nay. **Không** tự ý thêm lại ô "Người phụ trách"/"SE" hay đổi công thức suy
+  `owner`. Thêm `client` (Khách hàng, text tự do – vd "Viettel", "VCM") hiện ở cột "Khách hàng" bảng Tổng
+  quan dự án (`project-overview.js`); dự án tạo trước khi có trường này hiện "–".
+- Đầu việc (`task`, trong `projects/<id>.tasks[]`) có khối ngày tháng khớp đúng mẫu bảng Excel giấy của
+  phòng (4 cặp Bắt đầu/Kết thúc song song + Thời gian theo ngày, xem `taskForm()`/`planTaskRow()`/
+  `planDetail()` ở `plan.js`): `hdStart` + **`deadline` cũ** (= "Kế hoạch theo HĐ", **không đổi tên
+  `deadline`** – nhiều nơi khác đọc thẳng field này: cảnh báo quá hạn/sắp hạn ở `model.js`, `lateTasks()`,
+  sắp xếp…), `adjStart`/`adjEnd` ("Kế hoạch HĐ điều chỉnh"), `expStart`/`expEnd` ("Kế hoạch dự kiến"),
+  `actStart`/`actEnd` ("Kế hoạch thực tế"), `daysActual`/`daysProposed` ("Thời gian (ngày)" – Theo thực tế/
+  Theo đề xuất). Tất cả là trường tường thuật/tham khảo, **không** tham gia công thức Workload/Capacity hay
+  cảnh báo (chỉ `deadline` tham gia, như trước). Task cũ thiếu các trường này hiển thị "–", không cần script
+  chuyển đổi.
+- `task.collab` ("Thực hiện – được giao làm") **không còn ô nhập tay** ở `taskForm()` (bỏ theo yêu cầu người
+  dùng) – cột "Thực hiện" ở bảng Kế hoạch dự án giờ chỉ còn suy từ `t.doers` (người thực sự nhập "Nhập theo
+  tuần" cho đúng đầu việc, `model.js`), không còn gán trước tay. `taskForm.onSave` vẫn **giữ nguyên** giá
+  trị `collab` cũ khi sửa đầu việc đã có sẵn (đọc từ `raw.collab`, không đụng tới) để không âm thầm xoá dữ
+  liệu cũ; đầu việc tạo mới từ nay `collab` luôn rỗng.
 - Quyền phải kiểm tra ở **máy chủ** (`RULES`/`canWrite`), không chỉ ẩn nút.
 - Không đổi định dạng tài liệu đang có (`projects`, `weeks`, `config`) mà không viết bước chuyển đổi dữ liệu.
 - Không commit `.env`, `data/`, `node_modules/`.

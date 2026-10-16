@@ -14,9 +14,7 @@ main.addEventListener("click", e => {
   if(a==="godash"){ S.view="dash"; S.projTab="overview"; store("view","dash"); render(); return; }
   if(a==="wk"){ const d=+t.dataset.d; S.week = d===0 ? mondayOf(todayISO()) : addDays(S.week, d); render(); }
   else if(a==="tf"){ S.typeFilter=t.dataset.t; render(); }
-  else if(a==="openp"){ S.openProject = S.openProject===t.dataset.id ? null : t.dataset.id; render(); }
   else if(a==="goplan"){ S.planSel=t.dataset.id; S.typeFilter="Tất cả"; S.view="dash"; S.projTab="plan"; store("view","dash"); render(); }
-  else if(a==="dashtask"){ const p=M.pById.get(t.dataset.pid); const tk=p&&p._tasks.find(x=>x.id===t.dataset.id); if(p&&tk) openInfo(p, tk); }
   else if(a==="addentry") entryForm(null);
   else if(a==="editentry"){ const person=t.dataset.person||S.me; const doc=weekDoc(S.week,person); const en=doc&&(doc.entries||[]).find(x=>x.id===t.dataset.id); if(en) entryForm(en, person); }
   else if(a==="copyprev") copyPrev();
@@ -39,7 +37,9 @@ main.addEventListener("click", e => {
   else if(a==="imp-json") document.getElementById("impFile").click();
 });
 main.addEventListener("keydown", e => { if((e.key==="Enter"||e.key===" ") && e.target.matches("[data-act][tabindex]")){ e.preventDefault(); e.target.click(); } });
-main.addEventListener("change", e => { if(e.target.id==="impFile" && e.target.files[0]){ importBackup(e.target.files[0]); e.target.value=""; return; } if(e.target.dataset.act==="pickme"){ S.me=e.target.value; store("me",S.me);
+main.addEventListener("change", e => { if(e.target.id==="impFile" && e.target.files[0]){ importBackup(e.target.files[0]); e.target.value=""; return; }
+  if(e.target.id==="planImportFile" && e.target.files[0]){ planImportExcel(e.target.files[0]); e.target.value=""; return; }
+  if(e.target.dataset.act==="pickme"){ S.me=e.target.value; store("me",S.me);
     /* Đổi "Tôi là" thì đồng bộ luôn ô "Nhân sự" ở Báo cáo tuần (nếu đã từng mở Báo cáo trong phiên này) –
        giống đúng cách Dashboard/Tổng quan dự án/Tải tuần tự thu hẹp theo "Tôi là" (effectiveSimAs()), tránh
        phải tự chọn lại 2 nơi. Chỉ set khi S.rp đã có (rpInit() đã chạy) – reports.js nạp sau nên không gọi
