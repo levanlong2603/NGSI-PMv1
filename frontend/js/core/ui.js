@@ -10,8 +10,8 @@ function renderNav(){
   const sepI = VIEWS.findIndex(v=>v.sep);
   const group1 = sepI<0 ? VIEWS : VIEWS.slice(0,sepI), group2 = sepI<0 ? [] : VIEWS.slice(sepI+1);
   document.getElementById("nav").innerHTML =
-    `<div class="nav-grp">Dashboard &amp; Quản lý</div>${group1.map(btn).join("")}` +
-    (group2.length ? `<div class="nav-grp">Cài đặt</div>${group2.map(btn).join("")}` : "");
+    `<div class="nav-grp" title="Dashboard &amp; Quản lý"><span class="full">Dashboard &amp; Quản lý</span><span class="ab" aria-hidden="true">D</span></div>${group1.map(btn).join("")}` +
+    (group2.length ? `<div class="nav-grp" title="Cài đặt"><span class="full">Cài đặt</span><span class="ab" aria-hidden="true">C</span></div>${group2.map(btn).join("")}` : "");
   const ub = document.getElementById("userBox");
   if(S.user){ ub.hidden = false;
     const initials = avatarInitials(S.user.display_name);
@@ -30,11 +30,27 @@ document.getElementById("nav").addEventListener("click", e => { const b=e.target
 document.getElementById("meSel").addEventListener("change", e => { S.me=e.target.value; store("me",S.me); render(); });
 
 /* ================= sidebar thu gọn/phóng to ================= */
+/* Đồng bộ từ ptkt-appv1 (bản "Phòng Kỹ thuật" gốc, xem lịch sử phiên làm việc): bố cục điện thoại dùng menu
+   ngăn kéo (nút ☰ ở đầu trang) thay vì thu gọn cột menu như máy tính – 2 cơ chế khác hẳn nhau nên chỉ nút
+   thu gọn .side-toggle không đủ, cần thêm nhánh ≤860px riêng (mobileMQ/applyCollapsed/setNavOpen…). */
 const sideToggleBtn = document.getElementById("sideToggle");
-sideToggleBtn.insertAdjacentHTML("afterbegin", ICONS.panelLeft);
-if(store("sideCollapsed")==="1") document.body.classList.add("side-collapsed");
+sideToggleBtn.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 6l-6 6 6 6"/></svg>');
+/* Thu gọn chỉ có ý nghĩa ở bố cục máy tính; ở điện thoại menu là ngăn kéo nên luôn bỏ lớp side-collapsed (để nhãn
+   hiện đủ), trở lại máy tính thì áp lại theo lựa chọn đã lưu */
+const mobileMQ = window.matchMedia("(max-width:860px)");
+const applyCollapsed = () => { document.body.classList.toggle("side-collapsed", !mobileMQ.matches && store("sideCollapsed")==="1"); };
+applyCollapsed();
 const syncSideToggleLabel = () => { const on = document.body.classList.contains("side-collapsed"); const label = on?"Mở rộng menu":"Thu gọn menu"; sideToggleBtn.setAttribute("aria-label", label); sideToggleBtn.title = label; };
 syncSideToggleLabel();
+/* Ngăn kéo menu ở điện thoại */
+const tbMenu = document.getElementById("tbMenu");
+tbMenu.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>');
+const setNavOpen = on => { document.body.classList.toggle("nav-open", on); tbMenu.setAttribute("aria-expanded", on ? "true" : "false"); tbMenu.setAttribute("aria-label", on ? "Đóng menu" : "Mở menu"); };
+tbMenu.addEventListener("click", e => { e.stopPropagation(); setNavOpen(!document.body.classList.contains("nav-open")); });
+document.getElementById("navScrim").addEventListener("click", () => setNavOpen(false));
+document.addEventListener("keydown", e => { if(e.key==="Escape" && document.body.classList.contains("nav-open")) setNavOpen(false); });
+document.getElementById("nav").addEventListener("click", e => { if(e.target.closest("button[data-view]")) setNavOpen(false); });
+mobileMQ.addEventListener("change", () => { setNavOpen(false); applyCollapsed(); syncSideToggleLabel(); });
 sideToggleBtn.addEventListener("click", () => {
   const on = document.body.classList.toggle("side-collapsed");
   store("sideCollapsed", on?"1":"0");
@@ -101,7 +117,13 @@ function renderHeader(){
     document.getElementById("tbAvatar").textContent = avatarInitials(S.user.display_name);
     document.getElementById("tbName").textContent = S.user.display_name;
   }
-  document.getElementById("tbAppsMenu").innerHTML = `<div class="tb-empty">Chưa có ứng dụng khác</div>`;
+  /* Danh sách liên kết nhanh (nút lưới ở thanh đầu trang): mở trong thẻ mới, rel=noopener để trang đích không điều khiển được ứng dụng */
+  const APP_LINKS = [
+    {label:"Cổng thông tin", href:"https://www.ngsi.com.vn/", icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 4 5.7 4 9s-1.4 6.4-4 9c-2.6-2.6-4-5.7-4-9s1.4-6.4 4-9z"/></svg>'},
+    {label:"Facebook", href:"https://www.facebook.com/profile.php?id=100056785749445", icon:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 21v-7.5h2.6l.5-3h-3.1V8.6c0-.9.3-1.5 1.6-1.5h1.6V4.4c-.3 0-1.2-.1-2.3-.1-2.3 0-3.9 1.4-3.9 4v2.2H7.8v3h2.7V21h3z"/></svg>'}
+  ];
+  document.getElementById("tbAppsMenu").innerHTML = `<div class="tb-head">Danh sách chức năng (${APP_LINKS.length})</div>
+    <div class="tb-apps">${APP_LINKS.map(a=>`<a class="tb-app" href="${a.href}" target="_blank" rel="noopener noreferrer"><span class="tb-app-ico">${a.icon}</span><span>${esc(a.label)}</span></a>`).join("")}</div>`;
   const th = currentTheme();
   document.getElementById("tbAccountMenu").innerHTML = S.user ? `
     <div class="tb-head">Giao diện</div>
@@ -140,7 +162,8 @@ function render(){
   const banner = S.conn==="off" ? `<div class="banner">Không kết nối được máy chủ. Kiểm tra mạng hoặc báo quản trị hệ thống.</div>` : "";
   if(S.conn==="on" && !S.loaded) html = `<div class="empty"><b>Đang tải dữ liệu…</b></div>`;
   else html = (VIEW_RENDER[S.view] || VIEW_RENDER.dash || (() => ""))();
-  main.innerHTML = `<div class="page">${banner}${html}</div>`;
+  /* Chân trang cuối nội dung (cuộn cùng trang): tên đơn vị + năm + phiên bản ứng dụng */
+  main.innerHTML = `<div class="page">${banner}${html}</div><footer class="app-foot"><div>NextGen Service Integration</div><div>© 2026 NGSI - Version 1</div></footer>`;
 }
 
 
@@ -219,6 +242,29 @@ function effectiveSimAs(){
 
 
 
+/* ================= ảnh dán vào form (kiểu ô "images") =================
+   Ảnh chụp màn hình thường vài MB → thu nhỏ (cạnh dài tối đa 1280px) rồi nén JPEG trước khi lưu thành data URL
+   ngay trong tài liệu, để vẫn nằm gọn trong giới hạn 5MB của máy chủ và không cần kho tệp riêng. */
+const IMG_MAX_SIDE = 1280, IMG_QUALITY = 0.82;
+function imgCompress(file){
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file), im = new Image();
+    im.onload = () => {
+      const k = Math.min(1, IMG_MAX_SIDE/Math.max(im.width, im.height)), c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(im.width*k)); c.height = Math.max(1, Math.round(im.height*k));
+      const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url); resolve(c.toDataURL("image/jpeg", IMG_QUALITY));
+    };
+    im.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Không đọc được ảnh vừa dán.")); };
+    im.src = url;
+  });
+}
+const imgOk = u => typeof u==="string" && /^data:image\/(jpeg|png|webp);base64,/.test(u); // chỉ hiện ảnh đúng dạng, không nhận URL tuỳ ý
+function imgFieldHTML(list){
+  return `<div class="img-field" tabindex="0">${(list||[]).filter(imgOk).map((u,i)=>`<div class="img-th"><img src="${u}" alt="Ảnh ${i+1}"><button type="button" class="img-x" data-imgdel="${i}" aria-label="Bỏ ảnh ${i+1}">✕</button></div>`).join("")}</div>
+    <div class="img-pick"><button type="button" class="btn" data-imgpick>+ Chọn ảnh / chụp ảnh</button><input type="file" accept="image/*" multiple hidden data-imgfile></div>`;
+}
+
 /* ================= form drawer ================= */
 function openForm(cfg){
   const layer = document.getElementById("layer");
@@ -244,6 +290,8 @@ function openForm(cfg){
       ctl = `<select class="inp" id="${id}" ${dis}>${hasPlaceholder?"":'<option value="">— chọn —</option>'}${body}</select>`;
     }
     else if(f.type==="seg") ctl = `<div class="seg-in" role="group" aria-label="${esc(f.label)}">${f.options.map(o=>`<button type="button" data-k="${f.key}" data-v="${esc(JSON.stringify(o[0]))}" aria-pressed="${JSON.stringify(o[0]??null)===JSON.stringify(v??null)}" ${f.disabled?"disabled":""}>${esc(o[1])}</button>`).join("")}</div>`;
+    /* "images": ảnh dán (Ctrl+V) – vals[key] là mảng data URL; f.max = số ảnh tối đa (mặc định 4) */
+    else if(f.type==="images") ctl = `<div id="${id}">${imgFieldHTML(v)}</div>`;
     /* "badge": không phải ô nhập, chỉ hiển thị tĩnh (vd số giờ còn lại cạnh ô nhập giờ) – dùng f.text, không đọc/ghi vals */
     else if(f.type==="badge") ctl = `<div class="field-badge"><span class="pill ${esc(f.tone||"info")}">${esc(f.text||"")}</span></div>`;
     return `<div class="field" ${f.half?'data-half="1"':""} data-field="${f.key}">${f.type==="check"?"":`<label for="${id}">${esc(f.label)}${f.required?' <span style="color:var(--bad)">*</span>':""}</label>`}${ctl}${hint!==""?`<div class="hint" data-hint="${f.key}">${esc(hint)}</div>`:`<div class="hint" data-hint="${f.key}"></div>`}</div>`;
@@ -260,13 +308,16 @@ function openForm(cfg){
     <div class="drawer-f"><div>${cfg.onDelete?'<button class="btn danger" data-del>Xoá</button>':""}</div><div class="toolbar">${cfg.extraBtn?`<button class="btn" data-extra>${esc(cfg.extraBtn.label)}</button>`:""}<button class="btn" data-close>${cfg.readOnly?"Đóng":"Huỷ"}</button>${cfg.readOnly?"":`<button class="btn primary" data-save>${esc(cfg.saveLabel||"Lưu")}</button>`}</div></div></div>`;
   const dlg = layer.querySelector(".drawer");
   const api = { setOptions(key, opts){ optsOverride[key]=opts; vals[key]=""; const f = cfg.fields.find(x=>x.key===key); const wrap = dlg.querySelector(`[data-field="${key}"]`); if(f && wrap){ const tmp=document.createElement("div"); tmp.innerHTML=fieldHTML(f); wrap.replaceWith(tmp.firstElementChild); } } };
-  const readInputs = () => { for(const f of cfg.fields){ if(!f.key) continue; const el = dlg.querySelector("#f_"+f.key); if(!el) continue; if(f.type==="check") vals[f.key]=el.checked; else if(f.type==="number") vals[f.key]=el.value===""?null:+el.value; else if(f.type!=="seg") vals[f.key]=el.value||(f.type==="date"?null:""); } };
+  const readInputs = () => { for(const f of cfg.fields){ if(!f.key) continue; const el = dlg.querySelector("#f_"+f.key); if(!el) continue; if(f.type==="check") vals[f.key]=el.checked; else if(f.type==="number") vals[f.key]=el.value===""?null:+el.value; else if(f.type!=="seg" && f.type!=="images") vals[f.key]=el.value||(f.type==="date"?null:""); } };
   const close = () => { layer.innerHTML=""; document.removeEventListener("keydown", onKey); if(prevFocus && prevFocus.focus) prevFocus.focus(); };
   const onKey = e => { if(e.key==="Escape") close(); };
   document.addEventListener("keydown", onKey);
   dlg.addEventListener("click", async e => {
     const sb = e.target.closest(".seg-in button");
     if(sb){ const k=sb.dataset.k; const v=JSON.parse(sb.dataset.v); vals[k]=v; sb.parentElement.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed", b===sb)); const f=cfg.fields.find(x=>x.key===k); const hn=dlg.querySelector(`[data-hint="${k}"]`); if(f && hn && typeof f.hint==="function") hn.textContent=f.hint(v, vals); return; }
+    if(e.target.closest("[data-imgpick]")){ const inp = dlg.querySelector("[data-imgfile]"); if(inp) inp.click(); return; }
+    const ix = e.target.closest("[data-imgdel]");
+    if(ix){ const fi = cfg.fields.find(x=>x.type==="images"); if(fi){ vals[fi.key] = (vals[fi.key]||[]).filter((_, j) => j!==+ix.dataset.imgdel); dlg.querySelector("#f_"+fi.key).innerHTML = imgFieldHTML(vals[fi.key]); } return; }
     if(e.target.closest("[data-save]")){
       readInputs();
       for(const f of cfg.fields){ if(f.required && (vals[f.key]==null || vals[f.key]==="")){ toast("Còn thiếu: "+f.label); return; } }
@@ -284,6 +335,29 @@ function openForm(cfg){
     const hn = dlg.querySelector(`[data-hint="${key}"]`); if(f && hn && typeof f.hint==="function") hn.textContent=f.hint(vals[key], vals);
     cfg.fields.forEach(g=>{ if(typeof g.hint==="function"){ const h2=dlg.querySelector(`[data-hint="${g.key}"]`); if(h2) h2.textContent=g.hint(vals[g.key], vals); } });
   });
+  /* Thêm ảnh: dán (Ctrl+V / giữ chạm → Dán) hoặc nút "Chọn ảnh / chụp ảnh" (thư viện ảnh, máy ảnh điện thoại).
+     Chỉ xử lý khi clipboard có ảnh – dán chữ vẫn như thường. */
+  const fImg = cfg.fields.find(x=>x.type==="images");
+  const addImages = async files => {
+    const max = fImg.max || 4, cur = [...(vals[fImg.key] || [])];
+    if(cur.length >= max){ toast("Tối đa "+max+" ảnh – bỏ bớt ảnh cũ trước khi thêm."); return; }
+    try{
+      for(const fl of files.slice(0, max-cur.length)) cur.push(await imgCompress(fl));
+      vals[fImg.key] = cur; dlg.querySelector("#f_"+fImg.key).innerHTML = imgFieldHTML(cur);
+    }catch(err){ toast(err.message || "Không thêm được ảnh."); }
+  };
+  if(fImg && !cfg.readOnly){
+    dlg.addEventListener("paste", async e => {
+      const files = [...(e.clipboardData ? e.clipboardData.items : [])].filter(it => it.kind==="file" && /^image\//.test(it.type)).map(it => it.getAsFile()).filter(Boolean);
+      if(!files.length) return;
+      e.preventDefault(); await addImages(files);
+    });
+    dlg.addEventListener("change", async e => {
+      const inp = e.target.closest && e.target.closest("[data-imgfile]"); if(!inp) return;
+      const files = [...inp.files].filter(x => /^image\//.test(x.type)); inp.value = "";
+      if(files.length) await addImages(files);
+    });
+  }
   layer.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click", close));
   setTimeout(()=>{ const first = dlg.querySelector("input,select,textarea,.seg-in button"); (first||dlg.querySelector("[data-close]")).focus(); }, 30);
 }

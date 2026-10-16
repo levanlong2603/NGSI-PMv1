@@ -19,3 +19,4 @@ function toast(msg){ const t=document.createElement("div"); t.className="toast";
 
 
 function store(k, v){ try{ if(v===undefined) return localStorage.getItem("ptkt."+k); localStorage.setItem("ptkt."+k, v); }catch(e){ return null; } }
+if(typeof module!=="undefined" && module.exports) module.exports = {iso, parse, addDays, mondayOf, slug};

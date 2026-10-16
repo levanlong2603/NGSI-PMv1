@@ -67,7 +67,7 @@ function planContent(){
    "Mốc hợp đồng"/"Tình hình chung" (p.milestones/p.situation) đã bỏ khỏi trang này theo yêu cầu (chỉ còn ở
    form Sửa thông tin dự án – projectForm() – và Báo cáo → Báo cáo tổng hợp dự án, xem reports.js), dữ liệu
    cũ vẫn giữ nguyên trong CSDL. */
-const PLAN_COLS = 20;
+const PLAN_COLS = 18;
 /* Mức phóng bảng "Kế hoạch dự án" (zoom CSS trên <table>, xem plan.css) – chỉ lưu trong phiên, không ghi
    CSDL, giống các tuỳ chọn hiển thị khác (S.planTog…). */
 function planZoomLevel(){ return S.planZoom || 1; }
@@ -80,21 +80,20 @@ ACTIONS["planzoom"] = el => {
 function planDetail(p){
   let out = `<div class="pdetail">
     <div class="toolbar" style="margin-bottom:12px; justify-content:space-between">
-      <div>${canManageProject(p)?`${canDeleteProject(p)?`<button class="btn danger" data-act="delp" data-id="${esc(p.id)}">Xoá dự án</button>`:""}<button class="btn" data-act="editp" data-id="${esc(p.id)}">Sửa thông tin</button><button class="btn primary" data-act="addtask" data-id="${esc(p.id)}">+ Đầu việc</button>`:""}</div>
+      <div>${canManageProject(p)?`${canDeleteProject(p)?`<button class="btn danger" data-act="delp" data-id="${esc(p.id)}">Xoá dự án</button>`:""}<button class="btn" data-act="editp" data-id="${esc(p.id)}">Sửa thông tin</button>`:""}</div>
       <div class="plan-zoom" role="group" aria-label="Phóng to/thu nhỏ bảng">
         <button class="btn icon" data-act="planzoom" data-d="-0.1" title="Thu nhỏ" aria-label="Thu nhỏ">−</button>
         <span class="lv">${Math.round(planZoomLevel()*100)}%</span>
         <button class="btn icon" data-act="planzoom" data-d="0.1" title="Phóng to" aria-label="Phóng to">+</button>
-        <button class="btn" data-act="planzoom" data-d="0" title="Về 100%">100%</button>
       </div></div>`;
   const rows = planTreeRows(p, {cols:PLAN_COLS});
   out += `<div class="tbl-wrap panel plan-grid"><table style="min-width:2050px; white-space:nowrap; zoom:${planZoomLevel()}"><thead>
-    <tr><th rowspan="2">No.</th><th rowspan="2" style="white-space:normal">Đầu việc</th><th rowspan="2">Trạng thái</th><th rowspan="2">Ưu tiên</th><th rowspan="2">Phụ trách</th><th rowspan="2">Thực hiện</th>
+    <tr><th rowspan="2" class="plan-no">No.</th><th rowspan="2" class="plan-dv" style="white-space:normal">Đầu việc</th><th rowspan="2">Trạng thái</th><th rowspan="2">Ưu tiên</th><th rowspan="2">Phụ trách</th><th rowspan="2">Thực hiện</th>
       <th colspan="2">Thời gian (ngày)</th><th colspan="2">Kế hoạch theo HĐ</th><th colspan="2">Kế hoạch HĐ điều chỉnh</th><th colspan="2">Kế hoạch dự kiến</th><th colspan="2">Kế hoạch thực tế</th>
-      <th rowspan="2">WL</th><th rowspan="2" style="white-space:normal">Cập nhật mới nhất</th><th rowspan="2">Cảnh báo</th><th rowspan="2" style="white-space:normal; min-width:320px">Note</th></tr>
+      <th rowspan="2">Cảnh báo</th><th rowspan="2" style="white-space:normal; min-width:320px">Note</th></tr>
     <tr><th>Theo thực tế</th><th>Theo đề xuất</th><th>Bắt đầu</th><th>Kết thúc</th><th>Bắt đầu</th><th>Kết thúc</th><th>Bắt đầu</th><th>Kết thúc</th><th>Bắt đầu</th><th>Kết thúc</th></tr>
     </thead>
-    <tbody>${rows||`<tr><td colspan="${PLAN_COLS}"><div class="empty">Dự án chưa có đầu việc.${canManageProject(p)?" Bấm “+ Đầu việc”.":""}</div></td></tr>`}</tbody></table></div>
+    <tbody>${rows||`<tr><td colspan="${PLAN_COLS}"><div class="empty"><b>Dự án chưa có đầu việc.</b>${canManageProject(p)?`<button class="btn primary" style="margin-top:10px" data-act="addtask" data-id="${esc(p.id)}">+ Đầu việc</button>`:""}</div></td></tr>`}</tbody></table></div>
     <p class="small muted" style="margin:8px 0 0">Bấm vào một đầu việc để xem chi tiết${S.canEdit?", sửa hoặc đánh giá khi hoàn thành":""}.</p></div>`;
   return out;
 }
@@ -105,15 +104,26 @@ function planDetail(p){
    trước đây tách bỏ phần "mã. hạng mục –" mã hoá trong t.dv, giờ t.dv đã là tên thuần nên chỉ trả nguyên. */
 function planShortName(dv){ return dv||""; }
 /* Khớp đúng mẫu bảng Excel giấy của phòng (No./Nội dung/Trạng thái/Ưu tiên/Người phụ trách/Thời gian
-   (ngày)/4 cặp Bắt đầu-Kết thúc/Note) + giữ thêm vài cột riêng của app (Thực hiện, WL, Cập nhật mới nhất,
-   Cảnh báo) không có trong Excel nhưng đang hữu ích – xem thead 2 dòng tương ứng ở planDetail(). Bảng khá
-   rộng, cuộn ngang nhờ .tbl-wrap{overflow-x:auto} (base.css). */
-function planTaskRow(t, i, lvl=1){
+   (ngày)/4 cặp Bắt đầu-Kết thúc/Note) + giữ thêm cột riêng của app (Thực hiện, Cảnh báo) không có trong
+   Excel nhưng đang hữu ích – xem thead 2 dòng tương ứng ở planDetail(). Bảng khá rộng, cuộn ngang nhờ
+   .tbl-wrap{overflow-x:auto} (base.css).
+   Với ai sửa được dự án (canManageProject): 3 nút nổi (.plan-rowacts, position:absolute đè lên trong đúng ô
+   "No." – KHÔNG phải 1 cột riêng, để không làm bảng rộng thêm/đẩy lệch các cột khác) chỉ hiện khi di chuột
+   vào dòng (CSS tr:hover, xem plan.css) – "Chèn dòng lên trên"/"Chèn dòng xuống dưới" (dòng trống mới, điền
+   nội dung sau bằng cách bấm vào dòng) và "Xoá dòng" (xoá thẳng, có xác nhận) – nhanh hơn phải mở form rồi
+   mới xoá được như trước, vì khung mẫu hiện có không khớp đúng quy trình thật của PM nên người dùng cần tự
+   do thêm/bớt/sắp xếp lại đầu việc trực tiếp trên bảng, giống thao tác chèn/xoá hàng Excel. */
+function planTaskRow(t, i, lvl=1, p){
   const idle = t.status==="Chưa bắt đầu";
   const d = x => x?dmy(x):"–";
+  const canAct = p && canManageProject(p);
   return `<tr class="click${idle?" tr-idle":""}" data-act="task" data-id="${esc(t.id)}" tabindex="0" title="${esc(t.dv)}">
-      <td>${esc(t.no||"–")}</td>
-      <td style="padding-left:10px; white-space:normal; text-align:left"><div class="cell-main">${esc(t.dv)}</div>${t.detail&&!idle?`<div class="cell-sub">${esc(t.detail)}</div>`:""}</td>
+      <td class="plan-no">${esc(t.no||"–")}${canAct?`<div class="plan-rowacts">
+        <button type="button" data-act="taskinsert" data-pid="${esc(p.id)}" data-id="${esc(t.id)}" data-dir="up" title="Chèn dòng lên trên">↑+</button>
+        <button type="button" data-act="taskinsert" data-pid="${esc(p.id)}" data-id="${esc(t.id)}" data-dir="down" title="Chèn dòng xuống dưới">↓+</button>
+        <button type="button" data-act="taskdelrow" data-pid="${esc(p.id)}" data-id="${esc(t.id)}" title="Xoá dòng">✕</button>
+      </div>`:""}</td>
+      <td class="plan-dv" style="padding-left:10px; white-space:normal; text-align:left"><div class="cell-main">${esc(t.dv)}</div>${t.detail&&!idle?`<div class="cell-sub">${esc(t.detail)}</div>`:""}</td>
       <td>${stPill(t.status)}${t.done?`<div class="small muted">xong tuần ${isoWeek(t.done)}</div>`:""}</td>
       <td style="text-align:center">${t.pr?`<span class="pill ${t.pr==="P1"?"bad":"mute"}">${esc(t.pr)}</span>`:""}</td>
       <td>${esc(t.owner||"–")}</td>
@@ -123,8 +133,6 @@ function planTaskRow(t, i, lvl=1){
       <td>${d(t.adjStart)}</td><td>${d(t.adjEnd)}</td>
       <td>${d(t.expStart)}</td><td>${d(t.expEnd)}</td>
       <td>${d(t.actStart)}</td><td>${d(t.actEnd)}</td>
-      <td style="text-align:center">${t.wl??"–"}</td>
-      <td class="small" style="white-space:normal; text-align:left">${t.upd?`<div class="cell-sub" style="margin:0">${esc(t.upd)}</div>`:""}${t.ms?`<span class="pill ${t.ms>=3?"bad":"warn"}">Ma sát ${t.ms}</span> `:""}${esc(t.nn||"")}</td>
       <td style="white-space:normal; text-align:left">${warnPills(t.warns)}${t.ontime===true?' <span class="pill ok">Đúng hạn</span>':t.ontime===false?' <span class="pill bad">Trễ hạn</span>':""}${t.status==="Hoàn thành"&&!(t.eval&&t.eval.dat)&&S.canEdit?' <span class="pill info">Chờ đánh giá</span>':""}</td>
       <td class="small" style="white-space:normal; text-align:left; min-width:320px">${esc(t.note||"–")}</td></tr>`;
 }
@@ -132,7 +140,7 @@ function planTaskRow(t, i, lvl=1){
    còn gấp/mở theo hạng mục nữa (đã đổi theo yêu cầu người dùng: xem cùng thay đổi ở settings.js). */
 function planTreeRows(p, o={}){
   const rowFn = o.row||planTaskRow;
-  return p._tasks.map((t,i) => rowFn(t, i+1, 1)).join("");
+  return p._tasks.map((t,i) => rowFn(t, i+1, 1, p)).join("");
 }
 /* ===== Nhập dự án từ file Excel (mẫu bảng tiến độ giấy của phòng: sheet "Infor" + "NGSI") =====
    Tải "lười" ExcelJS giống hệt cách reports.js làm cho xuất file (rpEnsureExcel()) – bản sao riêng tiền tố
@@ -325,12 +333,13 @@ function taskForm(p, t){
   const raw = t ? (p.tasks||[]).find(x=>x.id===t.id) : null;
   const v = raw ? {...raw, st0:(raw.init||{}).status||"", ms0:(raw.init||{}).ms??null, nn0:(raw.init||{}).nn||"", dat:(raw.eval||{}).dat||"", cl:(raw.eval||{}).cl??null, tc:(raw.eval||{}).tc??null, nx:(raw.eval||{}).nx||""}
     : {id:"", no:"", dv:"", detail:"", owner:p.owner||"", collab:"", deadline:null, hdStart:null, adjStart:null, adjEnd:null, expStart:null, expEnd:null, actStart:null, actEnd:null, daysActual:null, daysProposed:null, qm:null, pt:null, pr:"P2", st0:"", ms0:null, nn0:"", note:""};
-  /* Danh sách phẳng, đúng thứ tự khung mẫu (config/catalog) – KHÔNG gom theo hạng mục nữa: "No." là text
-     tự do (A/I/1/1.1…) nên không có cách suy luận chắc chắn đâu là dòng hạng mục, đâu là nhánh con chỉ từ
-     text (chữ cái và số La Mã dùng chung ký tự, dễ gom nhầm hàng loạt – xem bình luận ở model.js derive()).
-     Nhãn mỗi lựa chọn hiện kèm "No." để vẫn dễ tìm theo đúng khung mẫu. */
-  const dvOpts = S.catalog.filter(c=>c.type===p.type).map(c=>[c.name, (c.no?c.no+". ":"")+c.name]);
-  /* "Phụ trách" của 1 đầu việc chỉ chọn trong đúng 4 người giữ vai trò PM/TM/AM/ACC của dự án (gán ở
+  /* "Đầu việc" là ô nhập tự do (type:"text"), KHÔNG còn chọn theo "Khung mẫu" (config/catalog) như trước –
+     khung mẫu chỉ dùng để sinh sẵn đầu việc lúc tạo dự án mới (projectForm()), còn PM thêm/chèn đầu việc
+     ngoài khung lúc dự án đã chạy (vd qua "Chèn dòng lên trên/xuống dưới" ở bảng, planTaskRow()) thì thực tế
+     hiếm khi khớp đúng tên trong khung mẫu – để PM tự gõ tên thay vì ép chọn trong danh sách cố định
+     (đổi theo yêu cầu người dùng). `cOf(t.dv)` bên dưới tra khung mẫu theo đúng tên gõ để vẫn hiện được "Kết
+     quả đầu ra"/"Chú thích" NẾU tên khớp sẵn có trong khung – không khớp thì hiện "–", không báo lỗi gì.
+     "Phụ trách" của 1 đầu việc chỉ chọn trong đúng 4 người giữ vai trò PM/TM/AM/ACC của dự án (gán ở
      "Sửa thông tin dự án" – projectForm() trên) – không còn chọn tự do trong toàn bộ nhân sự phòng như
      trước, đúng theo yêu cầu người dùng (4 vai trò này là nguồn duy nhất gán người phụ trách đầu việc). */
   const ownerOpts = [["",""],...[...new Set([p.pm,p.tm,p.am,p.acc].filter(Boolean))].map(n=>[n,n])];
@@ -342,7 +351,7 @@ function taskForm(p, t){
       <dt>Cập nhật mới nhất</dt><dd>${esc(t.upd||"–")}</dd><dt>Ngày cập nhật</dt><dd>${esc(t.updDate||"–")}</dd><dt>Kết quả đầu ra</dt><dd>${esc(cOf(t.dv).result||"–")}</dd><dt>Chú thích</dt><dd>${esc(cOf(t.dv).evidence||"–")}</dd></div>` : "",
     fields:[
       {key:"no", label:"No.", type:"text", half:true},
-      {key:"dv", label:"Đầu việc (quy trình "+p.type+")", type:"select", options:dvOpts, required:true, half:true},
+      {key:"dv", label:"Đầu việc", type:"text", required:true, half:true},
       {key:"detail", label:"Nội dung chi tiết", type:"textarea"},
       {key:"owner", label:"Phụ trách", type:"select", options:ownerOpts, half:true, hint:()=>ownerOpts.length>1?"":"Dự án chưa gán PM/TM/AM/ACC nào – sửa ở “Sửa thông tin dự án”."},
       {key:"pr", label:"Ưu tiên", type:"seg", options:["P1","P2","P3","P4"].map(x=>[x,x]), half:true},
@@ -400,6 +409,25 @@ function taskForm(p, t){
   });
 }
 function nextTaskId(p){ let n=(p.tasks||[]).length+1; const ids=new Set((p.tasks||[]).map(t=>t.id)); while(ids.has("t"+String(n).padStart(3,"0"))) n++; return "t"+String(n).padStart(3,"0"); }
+/* Chèn 1 dòng trống ngay lên trên/xuống dưới 1 đầu việc đang có (nút ẩn, chỉ hiện khi di chuột vào dòng –
+   xem planTaskRow()) – không mở form, chèn thẳng rồi bấm vào dòng mới để điền nội dung sau, giống thao tác
+   chèn hàng trống của Excel. Dùng khi khung mẫu không khớp đúng quy trình thật của dự án, cần tự sắp lại
+   thứ tự đầu việc trực tiếp trên bảng. */
+ACTIONS["taskinsert"] = async el => {
+  const p = M.pById.get(el.dataset.pid); if(!p || !canManageProject(p)) return;
+  const tasks = [...(p.tasks||[])];
+  const idx = tasks.findIndex(q=>q.id===el.dataset.id); if(idx<0) return;
+  const row = {id:nextTaskId(p), no:"", dv:"", detail:"", owner:"", collab:"", deadline:null,
+    hdStart:null, adjStart:null, adjEnd:null, expStart:null, expEnd:null, actStart:null, actEnd:null,
+    daysActual:null, daysProposed:null, qm:null, pt:null, pr:"P2", init:{status:"",ms:null,nn:""}, note:"", eval:{}, updatedAt:Date.now()};
+  tasks.splice(el.dataset.dir==="up" ? idx : idx+1, 0, row);
+  await saveProject({...p, tasks}); toast("Đã chèn dòng – bấm vào dòng mới để điền nội dung");
+};
+ACTIONS["taskdelrow"] = async el => {
+  const p = M.pById.get(el.dataset.pid); if(!p || !canManageProject(p)) return;
+  if(!confirm("Xoá dòng này?")) return;
+  await saveProject({...p, tasks:(p.tasks||[]).filter(q=>q.id!==el.dataset.id)}); toast("Đã xoá dòng");
+};
 /* extraBtn tuỳ chọn (vd {label, onClick}) – thêm nút đi tới nơi xử lý bên cạnh "Đóng", dùng cho chỗ gọi
    cần điều hướng tiếp (xem ACTIONS["exinfo"] ở exec-dashboard.js). Gọi không kèm tham số (taskForm() ở
    trên, khi nhân viên không có quyền sửa) thì vẫn chỉ xem thuần, không có nút thêm. */

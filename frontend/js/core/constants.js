@@ -114,3 +114,4 @@ function registerView({id, label, icon, iconSvg, render, position = "main"}){
   if(position === "bottom" || i < 0) VIEWS.push(def); else VIEWS.splice(i, 0, def);
   VIEW_RENDER[id] = render;
 }
+if(typeof module!=="undefined" && module.exports) module.exports = {QM_HOURS, PT_MULT, wlOf};

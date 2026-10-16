@@ -120,9 +120,12 @@ nút `+`/`✕` mỗi dòng (`ACTIONS["addcatrow"]`/`["delcatrow"]`) chèn/xoá n
   theo đúng thứ tự `p.tasks` (không gấp/mở theo hạng mục nữa, theo đúng yêu cầu người dùng) – `t.no` chỉ
   hiện như 1 nhãn nhỏ đầu dòng (`planTaskRow()`).
 - Đổi/xoá dòng khung mẫu của 1 loại dự án **không** ảnh hưởng dự án đã tạo trước đó (`task.dv`/`task.no`
-  được copy nguyên văn lúc tạo, độc lập với catalog) – chỉ ảnh hưởng dự án tạo **mới** sau này và ô chọn
-  "Đầu việc" khi thêm đầu việc cho dự án cũ (`taskForm()` tra catalog theo `type`+`name`, có thể trả rỗng
-  nếu dòng đã bị xoá/đổi tên – chấp nhận được, giống hành vi cũ).
+  được copy nguyên văn lúc tạo, độc lập với catalog) – chỉ ảnh hưởng dự án tạo **mới** sau này (`projectForm()`
+  sinh đầu việc từ khung mẫu lúc tạo dự án). Ô "Đầu việc" trong `taskForm()` (thêm/sửa 1 đầu việc) là **ô
+  nhập tự do** (`type:"text"`, không còn `<select>` tra theo khung mẫu như trước – bỏ theo yêu cầu người
+  dùng, vì đầu việc PM tự thêm/chèn ngoài khung lúc dự án đã chạy thường không khớp tên có sẵn trong khung
+  mẫu); `cOf(t.dv)` (tra khung mẫu theo đúng tên gõ, dùng để hiện "Kết quả đầu ra"/"Chú thích" tham khảo
+  trong `info` của form) vẫn giữ nguyên, chỉ không bắt buộc khớp nữa – tên không khớp thì các ô đó hiện "–".
 
 ## Công thức Workload / Capacity (`frontend/js/core/constants.js`, `model.js`)
 - **Đầu việc theo kế hoạch** (`p._tasks`, Kế hoạch dự án): `Workload (giờ) = QM_HOURS[Quy mô] ×
@@ -195,9 +198,88 @@ nút `+`/`✕` mỗi dòng (`ACTIONS["addcatrow"]`/`["delcatrow"]`) chèn/xoá n
   tuần" cho đúng đầu việc, `model.js`), không còn gán trước tay. `taskForm.onSave` vẫn **giữ nguyên** giá
   trị `collab` cũ khi sửa đầu việc đã có sẵn (đọc từ `raw.collab`, không đụng tới) để không âm thầm xoá dữ
   liệu cũ; đầu việc tạo mới từ nay `collab` luôn rỗng.
+- Bảng "Kế hoạch dự án" (`planTaskRow()`, `plan.js`), với ai sửa được dự án (`canManageProject(p)`): 3 nút
+  chèn/xoá dòng **nổi đè lên** (`position:absolute`, class `.plan-rowacts`, `plan.css`) ngay trong ô "No."
+  của dòng (tràn sang cả ô "Đầu việc" liền kề) – **KHÔNG phải 1 cột riêng** (đã thử thêm hẳn 1 cột trước đó
+  rồi bỏ theo phản hồi người dùng – thêm cột làm bảng rộng thêm/đẩy lệch các cột khác, chỉ cần nổi lên trên
+  là đủ). Ẩn mặc định (`opacity:0; pointer-events:none`), chỉ hiện khi di chuột vào dòng hoặc đang focus
+  bằng bàn phím (`tr:hover`/`:focus-within`) – "Chèn dòng lên trên"/"Chèn dòng xuống dưới"
+  (`ACTIONS["taskinsert"]`, chèn thẳng 1 dòng trống vào `p.tasks` theo đúng vị trí, KHÔNG mở form – người
+  dùng tự bấm vào dòng mới để điền nội dung, giống thao tác chèn hàng Excel) và "Xoá dòng"
+  (`ACTIONS["taskdelrow"]`, xoá thẳng có xác nhận, không cần mở form như `taskForm.onDelete` cũ). Lý do:
+  "Khung mẫu" hiện có không khớp đúng quy trình thật của dự án PM nên chỉ dùng để khởi tạo nhanh, sau đó
+  người dùng cần tự do thêm/bớt/sắp xếp lại đầu việc trực tiếp trên bảng. `planTaskRow(t, i, lvl, p)` nay
+  nhận thêm `p` (dự án) để biết `p.id` cho các nút này; `planTreeRows()` truyền `p` vào, gọi nơi khác nếu tự
+  viết `o.row` riêng cũng cần nhận đủ 4 tham số. `td.plan-no` cần `overflow:visible` (ghi đè `overflow:hidden`
+  chung của `.plan-grid td`) để phần nổi tràn sang không bị cắt, và tăng tạm `z-index` khi hover để đè lên
+  `td.plan-dv` liền kề (2 ô cùng sticky `z-index:1`, đứng trước thì bị vẽ đè lên theo thứ tự DOM).
 - Quyền phải kiểm tra ở **máy chủ** (`RULES`/`canWrite`), không chỉ ẩn nút.
 - Không đổi định dạng tài liệu đang có (`projects`, `weeks`, `config`) mà không viết bước chuyển đổi dữ liệu.
 - Không commit `.env`, `data/`, `node_modules/`.
+- **Đồng bộ giao diện (thuần hiển thị) từ dự án anh em `ptkt-appv1`** (web "Phòng Kỹ thuật" cùng gốc, vẫn
+  phát triển độc lập): đã đồng bộ 1 lần `frontend/css/base.css` (chép nguyên văn – bố cục, topbar, sidebar,
+  menu ☰ điện thoại, chân trang `.app-foot`, `.tb-apps`) + thêm đoạn cảm ứng (`@media (pointer:coarse)`) vào
+  cuối `frontend/css/dashboard.css`, cùng việc thêm `<button class="tb-menu" id="tbMenu">` (trong
+  `.topbar-l`, trước logo) và `<div class="nav-scrim" id="navScrim">` (sau `.app`) vào `frontend/index.html`,
+  và phần JS thu/mở menu ngăn kéo điện thoại trong `renderNav()`/phần "sidebar thu gọn" của
+  `frontend/js/core/ui.js` (biến `mobileMQ`, `setNavOpen`, lắng nghe `tbMenu`/`navScrim`/Esc). **Chỉ đồng bộ
+  phần hiển thị thuần** – **không** kéo theo: `frontend/css/plan.css` (khác hẳn, chứa bảng kiểu Excel
+  riêng của PM, đừng ghi đè), `frontend/js/modules/plan-import.js`/`kpi-calc.js` (tính năng nghiệp vụ riêng
+  của bản Kỹ thuật), `css/kpi.css`/`css/feedback.css` của bản đó, tính năng dán ảnh vào form
+  (`openForm` field "images") ở `ui.js` bản Kỹ thuật, model/state/catalog/quyền hạn (`model.js`, `state.js`,
+  `constants.js`, `events.js`, `server.js` của 2 dự án đã rẽ nhánh nghiệp vụ, không so để đồng bộ), và
+  không đổi lại `<title>`/`.topbar-app` về "Technical Department". Lần sau muốn đồng bộ tiếp UI mới từ
+  `ptkt-appv1`, diff riêng từng file CSS/HTML thuần hiển thị, không diff/chép các file đã rẽ nhánh nghiệp vụ
+  kể trên.
+- **Đồng bộ toàn bộ trang "Góp ý" từ `ptkt-appv1`** (lần này đồng bộ cả tính năng, không chỉ hiển thị,
+  theo yêu cầu người dùng): `frontend/js/modules/feedback.js` nay có thêm (1) **Sửa góp ý** (chỉ người viết/
+  admin hệ thống – trưởng phòng/phó phòng không còn sửa/xoá được góp ý người khác, chỉ còn đổi **trạng thái
+  xử lý**, xem `canWrite()`/`RULES.feedback` ở `backend/server.js`), (2) **ảnh minh hoạ** dán bằng Ctrl+V hoặc
+  chọn tệp (tối đa 4 ảnh/góp ý, tự nén JPEG cạnh dài ≤1280px trước khi lưu base64 – field type `"images"` mới
+  trong `openForm()`, `frontend/js/core/ui.js`: `imgCompress()`/`imgOk()`/`imgFieldHTML()`, CSS riêng
+  `frontend/css/feedback.css`), (3) **phản hồi/thảo luận** dưới mỗi góp ý – collection mới `feedbackReply`
+  (`RULES.feedbackReply = "own"`, ai cũng viết được, xoá thì chỉ người viết/trưởng phòng/phó phòng/admin;
+  xoá góp ý thì xoá theo luôn các phản hồi của nó, tránh mồ côi – xem route DELETE `/api/doc/:coll/:id`).
+  Máy chủ kiểm tra khớp y hệt giao diện (`imagesBad()`, nhánh riêng cho `feedback`/`feedbackReply` đầu
+  `canWrite()`) – **không** nới lỏng các kiểm tra này dù giao diện đã ẩn nút. Field type `"images"` trong
+  `openForm()` dùng chung được cho module khác nếu cần (không riêng cho Góp ý).
+- **Đồng bộ toàn bộ trang "KPI & Năng lực" từ `ptkt-appv1`** (cả tính năng, theo đúng yêu cầu người dùng –
+  giống cách đã làm với trang Góp ý ở trên): thay hẳn bản "Giai đoạn 1" cũ (chỉ admin xem, không lưu/chốt
+  được) bằng bản đang phát triển dần theo "Bước" của `ptkt-appv1`:
+  - **Công thức tính điểm tách riêng** vào `frontend/js/modules/kpi-calc.js` (IIFE `KPI_CALC`, dùng được cả
+    trên trình duyệt – classic script, nạp trước `kpi.js` trong `index.html` – lẫn trên Node qua
+    `require()`), để `backend/lib/kpi.js` tính lại CHÍNH XÁC cùng công thức khi chốt kỳ, không tin điểm
+    trình duyệt gửi lên. Vì thế `frontend/js/core/utils.js` và `constants.js` nay có thêm
+    `if(typeof module!=="undefined"...) module.exports = {...}` ở cuối file (không đổi gì khác) để
+    `kpi-calc.js` require được trên Node – đừng xoá 2 dòng này dù chúng "thừa" với trình duyệt.
+  - **Bản đánh giá KPI** (collection mới `kpiReview`, `RULES.kpiReview = "server"` – không ai ghi/xoá được
+    qua PUT/DELETE chung dù là trưởng phòng, chỉ qua `/api/kpi/review`, `/api/kpi/review/lock`,
+    `/api/kpi/review/unlock`, xem `backend/lib/kpi.js`): lưu nhận xét/minh chứng (nháp), **chốt** (máy chủ
+    tự tính lại điểm + lưu `snapshot` ngay lúc chốt, không phụ thuộc cấu hình tiêu chí đổi sau này), **mở
+    lại** (bắt buộc ghi lý do, giữ lịch sử). Chỉ `KPI_ROLES = admin+head` gọi được 3 route này (khớp
+    `KPI_WRITE_ROLES` ở `kpi.js`) – `kpi.js` (file này) mới chỉ hiển thị nhận xét trưởng phòng (`kpiNote`,
+    tính năng cũ) và đọc `kpiReview` để biết trạng thái Chưa đánh giá/Đang đánh giá/Đã chốt; **chưa có nút
+    Lưu/Chốt/Mở lại** trên giao diện (đúng hiện trạng "Bước 1" của bản gốc – backend đã sẵn route, frontend
+    sẽ nối vào ở bước sau, không tự thêm UI chốt khi chưa được yêu cầu).
+  - **Mọi tài khoản đã đăng nhập xem được trang này** (không riêng admin như bản cũ) – `KPI_VIEW_ROLES` ở
+    `kpi.js` khớp việc server không giới hạn đọc `kpiReview` qua `READ_ROLES` (để trống sẵn, có thể gán
+    `kpiReview: KPI_ROLES` vào đó nếu sau này cần ẩn lại). Thêm tab "Trang cá nhân" (hồ sơ KPI của chính
+    người xem, dựa theo "Tôi là"/`staff_name` tài khoản) cạnh "Tổng quan" (`.rp-tabs`, giống kiểu tab màn Dự
+    án/Báo cáo).
+  - Thêm biểu đồ xu hướng KPI trung bình theo kỳ (`kpiTrendHtml`, SVG polyline tự vẽ) và biểu đồ mạng nhện
+    theo tiêu chí (`kpiRadarHtml`) trong trang chi tiết 1 nhân viên, cùng bảng "Dự án và đầu việc thực hiện
+    trong kỳ" (`kpiWorkHtml`) liệt kê đúng những gì người đó đã làm (không phải đầu việc họ *phụ trách* nói
+    chung) – cả 3 đọc `KPI_CALC.work()`, không tính điểm. CSS riêng `frontend/css/kpi.css`.
+  - **Đổi hành vi dùng chung với Kế hoạch dự án**: bảng `kpiWorkHtml` liệt kê đầu việc của NHIỀU dự án cùng
+    lúc (không giống Kế hoạch dự án chỉ xem 1 dự án đang chọn `S.planSel`), nên mỗi dòng phải tự mang theo
+    mã dự án (`data-pid`) để bấm mở đúng `taskForm()`. Đã sửa `ACTIONS["task"]`
+    (`frontend/js/core/events.js`): `M.pById.get(t.dataset.pid || S.planSel)` – ưu tiên `data-pid` nếu dòng
+    có mang theo (kpi.js), rơi về `S.planSel` như cũ nếu không (mọi dòng hiện có trong Kế hoạch dự án,
+    `planTaskRow()`, chưa và không cần đổi). Khi thêm bảng đầu việc mới cũng liệt kê nhiều dự án, nhớ gắn
+    `data-pid` theo đúng kiểu này, đừng chỉnh lại `S.planSel` làm fallback chung.
+  - **Không porting**: `backend/server.js`'s `READ_ROLES` cơ chế đã thêm theo đúng bản gốc (hiện rỗng,
+    không giới hạn gì) – đừng tự ý gán `kpiReview: KPI_ROLES` vào đó nếu người dùng chưa yêu cầu ẩn dữ liệu
+    đánh giá của người khác.
 
 ## Lệnh
 - Máy cá nhân: `.env` đặt `DB_CLIENT=sqlite`, `DATA_DIR=./data`.

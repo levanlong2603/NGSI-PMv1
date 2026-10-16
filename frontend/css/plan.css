@@ -16,16 +16,29 @@
 /* "Khoá khung" kiểu Excel: cả khối 2 dòng tiêu đề dính nguyên khối ở top:0 (dán position:sticky lên CHÍNH
    <thead>, không phải từng <th> – để trình duyệt tự xếp dòng 1/dòng 2 đúng theo luồng bảng bình thường rồi
    mới dán cả khối, tránh phải đoán chiều cao dòng 1 bằng tay (cách cũ "top:48px" bị lệch vì "Đầu việc" có
-   thể xuống 2 dòng làm dòng 1 cao hơn/thấp hơn 48px tuỳ dự án)). 2 cột đầu (No./Đầu việc) dính riêng theo
-   trục ngang (position:sticky; left) ở cả phần thân lẫn đúng 2 ô góc trên-trái của dòng tiêu đề 1 (nested
-   sticky – dính dọc nhờ thead, dính ngang nhờ chính ô). z-index cao dần: ô thường < cột cố định < khối tiêu
-   đề < góc trên-trái (giao cả hai) để không bị đè sai lớp khi cuộn 2 chiều cùng lúc. */
+   thể xuống 2 dòng làm dòng 1 cao hơn/thấp hơn 48px tuỳ dự án)). 2 cột đầu (No./Đầu việc, class .plan-no/
+   .plan-dv) dính riêng theo trục ngang (position:sticky; left) ở cả phần thân lẫn đúng 2 ô góc trên-trái của
+   dòng tiêu đề 1 (nested sticky – dính dọc nhờ thead, dính ngang nhờ chính ô). z-index cao dần: ô thường <
+   cột cố định < khối tiêu đề < góc trên-trái (giao cả hai) để không bị đè sai lớp khi cuộn 2 chiều cùng lúc. */
 .plan-grid thead{position:sticky; top:0; z-index:3}
-.plan-grid tbody td:nth-child(1){position:sticky; left:0; z-index:1; width:48px; min-width:48px; max-width:48px; background:var(--surface)}
-.plan-grid tbody td:nth-child(2){position:sticky; left:48px; z-index:1; width:220px; min-width:220px; max-width:220px; background:var(--surface)}
-.plan-grid tbody tr.click:hover td:nth-child(1),.plan-grid tbody tr.click:hover td:nth-child(2){background:var(--hover)}
-.plan-grid thead tr:first-child th:nth-child(1){position:sticky; left:0; z-index:4; width:48px; min-width:48px; max-width:48px}
-.plan-grid thead tr:first-child th:nth-child(2){position:sticky; left:48px; z-index:4; width:220px; min-width:220px; max-width:220px}
+.plan-grid tbody td.plan-no{position:sticky; left:0; z-index:1; width:48px; min-width:48px; max-width:48px; background:var(--surface); overflow:visible}
+.plan-grid tbody td.plan-dv{position:sticky; left:48px; z-index:1; width:220px; min-width:220px; max-width:220px; background:var(--surface)}
+.plan-grid tbody tr.click:hover td.plan-no,.plan-grid tbody tr.click:hover td.plan-dv{background:var(--hover)}
+.plan-grid thead tr:first-child th.plan-no{position:sticky; left:0; z-index:4; width:48px; min-width:48px; max-width:48px}
+.plan-grid thead tr:first-child th.plan-dv{position:sticky; left:48px; z-index:4; width:220px; min-width:220px; max-width:220px}
+/* Nút chèn/xoá dòng (chỉ ai sửa được dự án mới thấy, planTaskRow()) KHÔNG phải 1 cột riêng – nổi đè lên
+   (position:absolute) ngay trong ô "No." của dòng đang di chuột tới, tràn cả sang ô "Đầu việc" bên cạnh,
+   nên không làm bảng rộng thêm hay đẩy lệch các cột khác. Ẩn mặc định (opacity:0), chỉ hiện khi di chuột
+   vào dòng hoặc đang focus bằng bàn phím (tr:hover/:focus-within), giống thao tác chèn hàng của
+   Excel/Google Sheets. td.plan-no cần overflow:visible (ghi đè overflow:hidden chung của .plan-grid td ở
+   trên) để phần nổi tràn sang không bị cắt; z-index của chính ô "No." cũng cần tăng tạm thời khi hover để
+   đè lên trên ô "Đầu việc" liền kề (2 ô đều sticky z-index:1 – bằng nhau thì theo thứ tự DOM, "No." đứng
+   trước nên mặc định bị "Đầu việc" vẽ đè lên). */
+.plan-rowacts{position:absolute; top:50%; left:2px; transform:translateY(-50%); display:flex; gap:3px; opacity:0; pointer-events:none; transition:opacity .1s ease; z-index:2}
+.plan-grid tbody tr:hover td.plan-no,.plan-grid tbody tr:focus-within td.plan-no{z-index:5}
+.plan-grid tbody tr:hover .plan-rowacts,.plan-grid tbody tr:focus-within .plan-rowacts{opacity:1; pointer-events:auto}
+.plan-rowacts button{all:unset; cursor:pointer; width:24px; height:22px; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--ink-3); background:var(--surface); box-shadow:0 0 0 1px var(--line)}
+.plan-rowacts button:hover{color:var(--ink); background:var(--hover)}
 /* Thanh cuộn to, rõ ràng, luôn thấy được ở mép dưới/phải của khung bảng (giống thanh cuộn ngang/dọc cố
    định ở rìa cửa sổ Excel) – mặc định thanh cuộn hệ điều hành có thể mảnh/mờ, dễ bị tưởng là không cuộn
    được. Chỉ áp dụng được trên trình duyệt gốc Chromium/WebKit (::-webkit-scrollbar); Firefox vẫn cuộn

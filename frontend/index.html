@@ -18,11 +18,14 @@
 <link rel="stylesheet" href="css/plan.css">
 <!-- CSS của module mở rộng đặt ở đây -->
 <link rel="stylesheet" href="css/reports.css">
+<link rel="stylesheet" href="css/feedback.css">
+<link rel="stylesheet" href="css/kpi.css">
 
 </head>
 <body>
 <header class="topbar">
   <div class="topbar-l">
+    <button class="tb-menu" id="tbMenu" type="button" aria-label="Mở menu" aria-expanded="false" aria-controls="nav"></button>
     <img class="topbar-wordmark" src="img/NextGen.png" alt="NEXT GEN · Service Integration">
     <div class="topbar-div"></div>
     <div class="topbar-app">Project Management</div>
@@ -57,6 +60,7 @@
   </aside>
   <main id="main"><div class="page"><div class="empty"><b>Đang tải dữ liệu…</b></div></div></main>
 </div>
+<div class="nav-scrim" id="navScrim"></div>
 <div id="layer"></div>
 <script src="js/core/utils.js"></script>
 <script src="js/core/constants.js"></script>
@@ -77,6 +81,7 @@
 <!-- ===== MODULE MỞ RỘNG: thêm <script src="js/modules/ten-module.js"></script> ngay dưới dòng này ===== -->
 <script src="js/modules/feedback.js"></script>
 <script src="js/modules/reports.js"></script>
+<script src="js/modules/kpi-calc.js"></script>
 <script src="js/modules/kpi.js"></script>
 <script src="js/modules/worklog.js"></script>
 

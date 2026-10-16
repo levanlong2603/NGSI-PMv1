@@ -28,7 +28,7 @@ main.addEventListener("click", e => {
       remove("projects/"+p.id); S.planSel=null; toast("Đã xoá dự án");
     }
   }
-  else if(a==="task"){ const p=M.pById.get(S.planSel); const tk=p._tasks.find(x=>x.id===t.dataset.id); taskForm(p, tk); }
+  else if(a==="task"){ const p=M.pById.get(t.dataset.pid || S.planSel); const tk=p&&p._tasks.find(x=>x.id===t.dataset.id); if(tk) taskForm(p, tk); }
   else if(a==="addstaff") staffForm(null);
   else if(a==="editstaff") staffForm(+t.dataset.i);
   else if(a==="adduser") userForm(null);

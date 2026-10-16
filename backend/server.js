@@ -16,6 +16,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const cookieParser = require("cookie-parser");
 const { createStore } = require("./lib/store");
+const kpi = require("./lib/kpi");
 
 /* ---------------- cấu hình (đọc từ file .env) ---------------- */
 const PORT = Number(process.env.PORT) || 3000;
@@ -68,13 +69,24 @@ const RULES = {
   projects: "own-project",  // projects/<mã dự án>  (thông tin dự án + đầu việc)
   weeks: "own-week",        // weeks/<thứ 2 của tuần>__<tên>  (dữ liệu nhập theo tuần)
   feedback: "own",          // feedback/<id>  (góp ý, yêu cầu cải tiến)
+  feedbackReply: "own",     // feedbackReply/<id>  (phản hồi/thảo luận dưới 1 góp ý: {fbId, text, images}; ai cũng viết được)
   kpiNote: "admin",         // kpiNote/<kỳ>__<tên nhân sự>  (nhận xét của trưởng phòng ở trang KPI & Năng lực)
+  kpiReview: "server",      // kpiReview/<kind>-<mã kỳ>__<tên>  (bản đánh giá KPI: nháp/đã chốt, điểm lúc chốt, lịch sử
+                             // điều chỉnh) – chỉ ghi qua /api/kpi/review*, xem lib/kpi.js
   worklog: "own-week",      // worklog/<thứ 2 của tuần>__<tên>  (nhật ký làm việc trong tuần, tự do ghi chú –
                              // đúng cơ chế own-week: tài khoản toàn quyền sửa được của mọi người/mọi tuần,
                              // để bù lại khi ai đó quên ghi lúc làm thêm giờ; nhân viên chỉ sửa tuần hiện
                              // tại trở đi, của chính mình)
 };
 const COLLECTIONS = new Set(Object.keys(RULES));
+/* KPI & Năng lực: MỌI tài khoản đã đăng nhập XEM được (kể cả bản đánh giá của người khác – theo yêu cầu mở cho tất
+   cả mọi người). GHI (lưu nhận xét / chốt / mở lại bản đánh giá, qua /api/kpi/review*) vẫn chỉ admin và trưởng phòng:
+   chốt điểm là quyết định của người đánh giá, không để nhân viên tự chốt/mở lại điểm của mình hay của nhau.
+   Khớp KPI_WRITE_ROLES ở frontend/js/modules/kpi.js. */
+const KPI_ROLES = new Set(["admin", "head"]);
+/* Giới hạn ĐỌC theo vai trò cho từng collection: hiện không giới hạn collection nào (mặc định mọi tài khoản đăng
+   nhập đọc được hết). Khi cần ẩn lại dữ liệu đánh giá thì thêm `kpiReview: KPI_ROLES` vào đây. */
+const READ_ROLES = {};
 const ID_RE = /^[A-Za-z0-9_\-.~:@+]{1,200}$/;
 
 const store = createStore();
@@ -178,6 +190,7 @@ app.post("/api/me/password", auth, A(async (req, res) => {
 app.get("/api/collection/:coll", auth, A(async (req, res) => {
   const coll = req.params.coll;
   if (!COLLECTIONS.has(coll)) return res.status(404).json({ error: "Không có dữ liệu này" });
+  if (READ_ROLES[coll] && !READ_ROLES[coll].has(req.user.role)) return res.status(403).json({ error: "Bạn không có quyền xem dữ liệu này" });
   const weekGte = req.query.field === "week" && req.query.gte ? String(req.query.gte) : null;
   const rows = await store.getDocs(coll, weekGte);
   res.json(rows.map(r => ({ id: r.doc_id, data: JSON.parse(r.body) })));
@@ -194,6 +207,15 @@ function mondayOfToday() {
 /* op: "write" (PUT, gồm cả thêm/sửa/xoá đầu việc bên trong) | "delete" (DELETE, xoá cả dự án) */
 function canWrite(user, coll, id, body, existing, op = "write") {
   const rule = RULES[coll];
+  /* Góp ý/phản hồi của người khác: trưởng phòng/phó phòng KHÔNG sửa nội dung hay xoá được – chỉ người viết. Ngoại lệ
+     duy nhất: trưởng phòng/phó phòng đổi được TRẠNG THÁI XỬ LÝ của góp ý (loại/nội dung/ảnh phải giữ nguyên).
+     Tài khoản "admin" (hệ thống) vẫn kiểm duyệt được để gỡ nội dung vi phạm. */
+  if ((coll === "feedback" || coll === "feedbackReply") && existing && existing.created_by !== user.username && user.role !== "admin") {
+    if (coll === "feedback" && op === "write" && FULL_ROLES.has(user.role) && body && body.type === existing.type && body.text === existing.text
+      && JSON.stringify(body.images === undefined ? (existing.images || []) : body.images) === JSON.stringify(existing.images || [])
+      && ["Mới", "Đang xem xét", "Đã thực hiện"].includes(body.status)) return true;
+    return false;
+  }
   if (FULL_ROLES.has(user.role)) return true;
   if (rule === "member") return true;
   if (rule === "own-project") {
@@ -218,6 +240,8 @@ function canWrite(user, coll, id, body, existing, op = "write") {
   if (week && week < mondayOfToday()) return false;
   return true;
 }
+/* Ảnh dán kèm góp ý/phản hồi: chỉ data URL ảnh jpeg/png/webp, tối đa 4 ảnh, mỗi ảnh ≤ ~1,2MB chuỗi */
+const imagesBad = a => !Array.isArray(a) || a.length > 4 || a.some(u => typeof u !== "string" || u.length > 1_200_000 || !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(u));
 app.put("/api/doc/:coll/:id", auth, A(async (req, res) => {
   const { coll, id } = req.params, body = req.body;
   if (!COLLECTIONS.has(coll) || !ID_RE.test(id)) return res.status(400).json({ error: "Đường dẫn không hợp lệ" });
@@ -241,7 +265,29 @@ app.put("/api/doc/:coll/:id", auth, A(async (req, res) => {
     }
   }
   if (coll === "feedback") {
+    /* Ảnh dán kèm góp ý: chỉ nhận data URL ảnh jpeg/png/webp, tối đa 4 ảnh, mỗi ảnh ≤ ~1,2MB chuỗi. Thiếu trường
+       images (lệnh cũ, vd đổi trạng thái) thì giữ nguyên ảnh đang có – gửi [] mới là xoá hết ảnh. */
+    if (body.images === undefined) { if (exBody && exBody.images) body.images = exBody.images; }
+    else if (imagesBad(body.images))
+      return res.status(400).json({ error: "Ảnh đính kèm không hợp lệ (tối đa 4 ảnh jpeg/png/webp)" });
     // created_by/person/createdAt luôn do máy chủ ghi, không nhận từ client, và không đổi được sau khi tạo
+    body.created_by = exBody ? exBody.created_by : req.user.username;
+    body.person = exBody ? exBody.person : (req.user.staff_name || req.user.display_name || req.user.username);
+    body.createdAt = exBody ? exBody.createdAt : new Date().toISOString();
+  }
+  if (coll === "feedbackReply") {
+    /* Phản hồi thuộc đúng 1 góp ý đang tồn tại (fbId không đổi được sau khi tạo); chỉ giữ 3 trường text/images/fbId,
+       created_by/person/createdAt do máy chủ ghi như góp ý. */
+    const fbId = exBody ? exBody.fbId : body.fbId;
+    if (typeof fbId !== "string" || !ID_RE.test(fbId) || !(await store.getDoc("feedback/" + fbId)))
+      return res.status(400).json({ error: "Góp ý được phản hồi không tồn tại" });
+    const text = typeof body.text === "string" ? body.text.trim() : "";
+    if (!text || text.length > 2000) return res.status(400).json({ error: "Nội dung phản hồi 1–2000 ký tự" });
+    const images = body.images === undefined ? [] : body.images;
+    if (imagesBad(images)) return res.status(400).json({ error: "Ảnh đính kèm không hợp lệ (tối đa 4 ảnh jpeg/png/webp)" });
+    const keep = { fbId, text, images };
+    for (const k of Object.keys(body)) delete body[k];
+    Object.assign(body, keep);
     body.created_by = exBody ? exBody.created_by : req.user.username;
     body.person = exBody ? exBody.person : (req.user.staff_name || req.user.display_name || req.user.username);
     body.createdAt = exBody ? exBody.createdAt : new Date().toISOString();
@@ -306,8 +352,24 @@ app.delete("/api/doc/:coll/:id", auth, A(async (req, res) => {
   if (!canWrite(req.user, coll, id, null, JSON.parse(ex), "delete")) return res.status(403).json({ error: "Bạn không có quyền xoá phần này" });
   await store.deleteDoc(p);
   audit(req.user, "delete", p); broadcast(coll);
+  if (coll === "feedback") { // xoá góp ý thì xoá luôn các phản hồi của nó, tránh phản hồi mồ côi
+    let n = 0;
+    for (const r of await store.getDocs("feedbackReply")) if (JSON.parse(r.body).fbId === id) { await store.deleteDoc(`feedbackReply/${r.doc_id}`); n++; }
+    if (n) { audit(req.user, "delete", `feedbackReply/*(${id}) x${n}`); broadcast("feedbackReply"); }
+  }
   res.status(204).end();
 }));
+/* --- bản đánh giá KPI theo người + kỳ (xem lib/kpi.js): lưu nhận xét, chốt (máy chủ tự tính điểm), mở lại --- */
+const kpiOnly = (req, res, next) => KPI_ROLES.has(req.user.role) ? next() : res.status(403).json({ error: "Bạn không có quyền đánh giá KPI" });
+const kpiRoute = (fn, action) => A(async (req, res) => {
+  const r = await fn(store, req.user.username, req.body || {});
+  if (r.error) return res.status(r.error.status).json({ error: r.error.message });
+  audit(req.user, action, `kpiReview/${r.id}`); broadcast("kpiReview");
+  res.json(r.doc);
+});
+app.post("/api/kpi/review", auth, kpiOnly, kpiRoute(kpi.saveReview, "kpi-save"));
+app.post("/api/kpi/review/lock", auth, kpiOnly, kpiRoute(kpi.lockReview, "kpi-lock"));
+app.post("/api/kpi/review/unlock", auth, kpiOnly, kpiRoute(kpi.unlockReview, "kpi-unlock"));
 app.get("/api/events", auth, (req, res) => {
   res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" });
   res.write("retry: 5000\n\n");
