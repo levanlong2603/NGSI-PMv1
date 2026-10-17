@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
-# Hook cài vào bare repo trên máy chủ: /opt/ptkt-repo.git/hooks/post-receive
-# Chạy tự động mỗi khi "git push" tới bare repo thành công.
-# Lấy mã nhánh BRANCH ra /opt/ptkt (giữ nguyên .env và dữ liệu ngoài đó),
+# Hook cài vào bare repo trên máy chủ: /opt/ngsi-repo.git/hooks/post-receive
+# Chạy tự động mỗi khi "git push ngsi main" tới bare repo thành công.
+# Lấy mã nhánh BRANCH ra /opt/ngsi (giữ nguyên .env và dữ liệu ngoài đó),
 # cài lại phụ thuộc rồi khởi động lại dịch vụ.
+#
+# LƯU Ý khi cài lần đầu trên máy chủ mới: tạo sẵn file $LOG do user chạy hook (ngsi) SỞ HỮU trước khi
+# push lần đầu, vd: sudo touch /var/log/ngsi-deploy.log && sudo chown ngsi:ngsi /var/log/ngsi-deploy.log.
+# Thiếu bước này, dòng "exec >>$LOG" bên dưới lỗi "Permission denied" (user ngsi không tạo được file mới
+# trong /var/log) và DỪNG NGAY TOÀN BỘ HOOK (không checkout/không restart gì cả) – nhưng "git push" vẫn
+# báo thành công bình thường (refs đã cập nhật ở bare repo trước khi hook chạy), dễ gây hiểu lầm "đã push
+# nhưng server không đổi gì" (đã gặp đúng lỗi này 1 lần, xem CLAUDE.md mục "Triển khai").
 set -euo pipefail
 
-TARGET="/opt/ptkt"
-GIT_DIR="/opt/ptkt-repo.git"
-BRANCH="master"
-LOG="/var/log/ptkt-deploy.log"
+TARGET="/opt/ngsi"
+GIT_DIR="/opt/ngsi-repo.git"
+BRANCH="main"
+LOG="/var/log/ngsi-deploy.log"
 
 exec >>"$LOG" 2>&1
 
@@ -22,6 +29,6 @@ while read -r oldrev newrev ref; do
   cd "$TARGET"
   npm ci --omit=dev
 
-  sudo /bin/systemctl restart ptkt
-  echo "=== $(date '+%F %T') Xong, dịch vụ ptkt đã khởi động lại ==="
+  sudo /bin/systemctl restart ngsi
+  echo "=== $(date '+%F %T') Xong, dịch vụ ngsi đã khởi động lại ==="
 done

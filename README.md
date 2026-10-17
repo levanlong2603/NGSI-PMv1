@@ -1,4 +1,4 @@
-# NGSI · Phòng Kỹ thuật – Quản trị công việc và nguồn lực
+# NGSI · Phòng Quản lý dự án – Quản trị công việc và nguồn lực
 
 Ứng dụng web nội bộ: Dashboard, Tổng quan dự án, Tải tuần, Nhập theo tuần, Kế hoạch dự án, Cài đặt.
 Node.js + Express + MariaDB (hoặc SQLite cho máy lập trình), đăng nhập theo tài khoản, cập nhật tức thời.

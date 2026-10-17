@@ -511,3 +511,37 @@ nút `+`/`✕` mỗi dòng (`ACTIONS["addcatrow"]`/`["delcatrow"]`) chèn/xoá n
 
 ## Triển khai
 Máy chủ thật: mã ở `/opt/ptkt`, CSDL MariaDB `ptkt` (user `ptkt`@localhost), dịch vụ systemd `ptkt`, Nginx. Quy trình cập nhật: sao lưu (`deploy/backup.sh`) → chép mã mới vào `/opt/ptkt` (giữ `.env` và dữ liệu) → `npm ci --omit=dev` → `systemctl restart ptkt`. Luôn sao lưu trước khi cập nhật.
+
+**NGSI-PMv1 (web này) đã triển khai thật trên CÙNG máy chủ** (`192.168.11.205`), cổng ngoài **8081** (thay
+hẳn "PMIS" – hệ thống FastAPI của đội khác từng chạy ở cổng này, đã sao lưu đầy đủ trước khi gỡ – xem lịch
+sử phiên làm việc nếu cần khôi phục): mã ở `/opt/ngsi`, CSDL MariaDB `ngsi` (user `ngsi`@localhost), dịch vụ
+systemd `ngsi`, Nginx site `/etc/nginx/sites-available/ngsi` (proxy `8081` → Node nội bộ `127.0.0.1:3001`,
+y hệt mẫu site `ptkt`/8080→3000). Mọi thứ dựng theo **đúng khuôn mẫu `ptkt`** ở trên, kể cả cơ chế cập nhật.
+**Tên gọi tách hẳn khỏi `ptkt`** (yêu cầu người dùng, tránh nhầm "web Kỹ thuật"/"web PM" dù cùng công ty
+NGSI, đứng cùng máy chủ): `package.json` (`name`/`description`), `README.md` (tiêu đề) đổi từ "ptkt"/"Phòng
+Kỹ thuật" sang "ngsi-pm"/"Phòng Quản lý dự án"; `deploy/` có bản riêng cho app này – `deploy/ngsi.service`
+(thay `deploy/ptkt.service` cũ, đã xoá), `deploy/nginx-ngsi.conf` (thay `deploy/nginx-ptkt.conf` cũ, đã
+xoá), `deploy/post-receive`/`deploy/backup.sh` sửa thẳng nội dung sang `ngsi`/`/opt/ngsi`/port `8081`.
+`deploy/check-ha.sh` và `deploy/nginx-ptkt-a10.conf` **giữ nguyên tên + nội dung ptkt** (mô tả cụm 2 máy
+SERVER3/SERVER4 của riêng `ptkt`, `ngsi` chỉ chạy 1 máy, không có HA) – đã thêm dòng chú thích đầu file nói
+rõ "chỉ dành cho ptkt, không áp dụng cho ngsi", không xoá vì có thể cần đối chiếu nếu `ngsi` lên HA sau này.
+- **Git-push-to-deploy** (giống `ptkt`): bare repo `/opt/ngsi-repo.git` (user hệ thống `ngsi`, shell
+  `/bin/bash`, khoá SSH riêng `~/.ssh/authorized_keys` của `ngsi`) + hook `hooks/post-receive` (bản sao của
+  `deploy/post-receive` trong repo này – đã sửa sẵn `BRANCH="main"`/`TARGET="/opt/ngsi"`/restart `ngsi`,
+  không cần tự đổi tay nữa). Máy cá nhân đã cấu hình sẵn: khoá riêng `~/.ssh/ngsi_deploy`, alias
+  `Host ngsi-deploy` trong `~/.ssh/config` (trỏ `192.168.11.205`, user `ngsi`), git remote `ngsi` trỏ
+  `ngsi-deploy:/opt/ngsi-repo.git`. Cập nhật mã: `git push ngsi main` – hook tự `checkout -f` vào
+  `/opt/ngsi`, `npm ci --omit=dev`, restart dịch vụ (sudoers riêng `ngsi ALL=(root) NOPASSWD:
+  /bin/systemctl restart ngsi`, không cần mật khẩu). `.env`/CSDL không hề bị đụng tới mỗi lần push.
+  **Lỗi đã gặp 1 lần khi mới dựng**: hook ghi log qua `exec >>"$LOG"` với `LOG="/var/log/ngsi-deploy.log"`
+  – file này **chưa tồn tại** lúc tạo hook, user `ngsi` không có quyền tự tạo file mới trong `/var/log`
+  (thư mục root sở hữu) nên bước `exec` đầu tiên lỗi "Permission denied" và **toàn bộ hook dừng ngay lập
+  tức** (không checkout/không restart gì cả) dù `git push` vẫn báo thành công bình thường (refs đã cập
+  nhật ở bare repo, chỉ hook chạy sau đó mới hỏng) – dễ gây hiểu lầm "đã push nhưng server không đổi gì".
+  Đã sửa: tạo sẵn `/var/log/ngsi-deploy.log` (chown `ngsi:ngsi`) 1 lần, không còn tái diễn cho các lần
+  push sau. Nếu dựng thêm bare repo tương tự cho web khác, nhớ tạo sẵn file log trước (hoặc đổi hook không
+  `exec` ra file log nữa) để tránh đúng lỗi này.
+- Tài khoản quản trị đầu tiên của `ngsi` tạo qua `npm run user -- create` ngay sau khi seed CSDL lần đầu –
+  không ghi lại thông tin đăng nhập ở đây (không commit bí mật vào repo); nếu quên, dùng `npm run user --
+  reset-password` trên server (`cd /opt/ngsi && node --env-file=.env backend/scripts/manage-user.js
+  reset-password`).

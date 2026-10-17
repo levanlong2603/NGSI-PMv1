@@ -1,15 +1,15 @@
 [Unit]
-Description=Phong Ky thuat - Quan tri cong viec va nguon luc
+Description=NGSI PM - Quan tri cong viec va nguon luc (Phong Quan ly du an)
 After=network.target mariadb.service
 Wants=mariadb.service
 
 [Service]
 Type=simple
-User=ptkt
-Group=ptkt
-WorkingDirectory=/opt/ptkt
-EnvironmentFile=/opt/ptkt/.env
-ExecStart=/usr/bin/node /opt/ptkt/backend/server.js
+User=ngsi
+Group=ngsi
+WorkingDirectory=/opt/ngsi
+EnvironmentFile=/opt/ngsi/.env
+ExecStart=/usr/bin/node /opt/ngsi/backend/server.js
 Restart=always
 RestartSec=3
 # Bảo mật
@@ -17,7 +17,7 @@ NoNewPrivileges=true
 ProtectSystem=full
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/var/lib/ptkt
+ReadWritePaths=/var/lib/ngsi
 
 [Install]
 WantedBy=multi-user.target

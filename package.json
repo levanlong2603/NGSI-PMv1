@@ -1,7 +1,7 @@
 {
-  "name": "ptkt-theo-doi-cong-viec",
+  "name": "ngsi-pm-theo-doi-cong-viec",
   "version": "1.2.0",
-  "description": "Phòng Kỹ thuật NGSI – Quản trị công việc và nguồn lực (MariaDB/SQLite)",
+  "description": "Phòng Quản lý dự án NGSI – Quản trị công việc và nguồn lực (MariaDB/SQLite)",
   "main": "backend/server.js",
   "private": true,
   "license": "UNLICENSED",
