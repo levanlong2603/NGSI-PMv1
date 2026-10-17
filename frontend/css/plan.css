@@ -23,6 +23,14 @@
    var(--line-2) xám chung của th/td thường – nền xanh lá nhạt (#D7E8C7) kẻ bằng màu xám lộ rõ thành 1 vệt
    sáng cắt ngang, đổi sang cùng tông mới hoà vào nền, đỡ bị "lộ" viền phân cách (theo phản hồi người dùng). */
 .plan-grid thead th{background:#D7E8C7; color:#1A1A1A; font-weight:700; border-bottom:1px solid #B9D6A0; border-right:1px solid #B9D6A0; text-align:center; vertical-align:middle; white-space:normal; padding:8px 10px; line-height:1.3}
+/* Trang "Tổng quan → bấm dự án" (ovDetailHeader()+planDetail(p), project-overview.js – planDetail() gọi
+   KHÔNG có extra nên nhận class .plan-grid-report, xem plan.js) dùng đúng màu tiêu đề đọc được từ sheet
+   "Report" của file mẫu thật `Bao cao trien khai LB.NGSI-Viettel_Lydk.xlsx` (bảng "II. CÁC MỐC CHÍNH CỦA
+   DỰ ÁN", dòng tiêu đề STT/Hạng mục/.../Người phụ trách): #1F4E78 (xanh navy đậm) nền, chữ trắng – đọc
+   bằng ExcelJS (fill.fgColor.argb của ô tiêu đề), KHÔNG phải màu dải "CHÚ GIẢI GANTT" (xanh dương/tím/
+   xanh lá riêng cho chú giải, không phải màu tiêu đề bảng – dễ nhầm nếu chỉ nhìn ảnh chụp). Bảng "Kế hoạch
+   dự án" (có extra, KHÔNG có class này) vẫn giữ nguyên tiêu đề xanh lá #D7E8C7 kiểu lưới Excel như cũ. */
+.plan-grid-report thead th{background:#1F4E78; color:#fff; border-bottom:1px solid #16395C; border-right:1px solid #2A5E8C}
 .plan-grid th,.plan-grid td{border-right:1px solid var(--line-2); overflow:hidden; text-align:center}
 .plan-grid th:last-child,.plan-grid td:last-child{border-right:0}
 /* "Khoá khung" kiểu Excel: cả khối 2 dòng tiêu đề dính nguyên khối ở top:0 (dán position:sticky lên CHÍNH
@@ -90,3 +98,24 @@
 .plan-grid tbody tr.plan-st-done td.plan-no,.plan-grid tbody tr.plan-st-done td.plan-dv{background:color-mix(in srgb, var(--bad) 14%, var(--surface))}
 .plan-grid tbody tr.plan-st-other td{background:color-mix(in srgb, var(--ochre) 14%, var(--surface))}
 .plan-grid tbody tr.plan-st-other td.plan-no,.plan-grid tbody tr.plan-st-other td.plan-dv{background:color-mix(in srgb, var(--ochre) 14%, var(--surface))}
+/* "Tiến độ theo tuần" (planGanttPanel(), plan.js) – lưới Gantt theo tuần, 1 ô = 1 tuần (thứ 2→CN), tô màu
+   đặc khi đầu việc phủ tuần đó (xem planTaskBar() – màu theo nguồn ngày/cảnh báo, không set qua CSS). Mỗi ô
+   32px đủ hẹp để hiện được nhiều tuần trong khung cuộn ngang mà vẫn bấm/đọc được, giống mật độ cột tuần của
+   file mẫu Excel gốc (sheet Report). */
+.plan-gantt-scroll{overflow:auto; max-width:100%}
+.plan-gantt-tbl{border-collapse:collapse; font-size:12px}
+.plan-gantt-tbl th,.plan-gantt-tbl td{border:1px solid var(--line-2)}
+.plan-gc{width:56px; min-width:56px; max-width:56px; padding:4px 3px; text-align:center; background:var(--surface); white-space:nowrap}
+.plan-gc-cur{background:#FFF7D6 !important}
+.plan-gc-label{position:sticky; left:0; z-index:1; background:var(--surface); padding:4px 10px; text-align:left; white-space:nowrap; max-width:260px; overflow:hidden; text-overflow:ellipsis; font-weight:600}
+.plan-gantt-tbl thead th.plan-gc-label{z-index:2}
+.plan-gantt-legend{display:flex; flex-wrap:wrap; gap:4px 14px; margin-bottom:10px}
+.plan-gantt-legend span{display:inline-flex; align-items:center; gap:5px}
+.plan-gantt-legend i{display:inline-block; width:12px; height:12px; border-radius:3px; flex:none}
+/* "Đầu việc khẩn cấp / cần chú ý" (planUrgentPanel(), plan.js) – thanh tiêu đề 2 nhóm A/B tô màu đặc kiểu
+   file mẫu Excel (đỏ đậm = Quá hạn, cam = Sắp đến hạn), chữ trắng, bo góc nhẹ cho khác hẳn .panel-h thường
+   (nổi bật đúng ý "khẩn cấp"). */
+.plan-urgent-hdr{padding:8px 14px; border-radius:6px; font-weight:800; color:#fff; letter-spacing:.02em}
+.plan-urgent-hdr .small{font-weight:600; opacity:.85; margin-left:4px}
+.plan-urgent-a{background:#8B0000}
+.plan-urgent-b{background:#C77A1E}

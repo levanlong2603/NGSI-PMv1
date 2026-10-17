@@ -32,6 +32,15 @@
 .rp-sec-grn thead th{background:#D7E8C7; color:#1A1A1A; font-weight:700; border-bottom:1px solid #B9D6A0; text-align:center; white-space:normal; vertical-align:middle}
 .rp-sec-grn th,.rp-sec-grn td{border-right:1px solid var(--line-2); overflow:hidden}
 .rp-sec-grn th:last-child,.rp-sec-grn td:last-child{border-right:0}
+/* .rp-sec-blue ("Danh sách đầu việc" ở Báo cáo dự án, `rpProjectContent()` – ĐÚNG 1 trong 4 nơi dùng
+   .rp-sec-grn, 3 nơi còn lại giữ nguyên xanh lá) – đổi riêng tiêu đề sang navy đậm `#1F4E78`/chữ trắng
+   theo yêu cầu người dùng, cùng mã màu đã đọc từ sheet Report (`Bao cao trien khai LB.NGSI-Viettel_Lydk.
+   xlsx`, xem `.plan-grid-report` ở `plan.css`) – đặt tên lớp riêng, KHÔNG đổi màu `.rp-sec-grn` gốc (vẫn
+   dùng cho "Báo cáo tuần"/Tải tuần/"Báo cáo tổng hợp dự án"). Phải khai báo SAU `.rp-sec-grn thead th` ở
+   trên để thắng khi phần tử mang cả 2 lớp (`class="rp-sec rp-sec-grn rp-sec-blue"`, cùng độ ưu tiên CSS,
+   thắng theo thứ tự khai báo). Ô "Hạng mục" gộp dòng (rowspan) cũng đổi nền từ `var(--ok-soft)` (xanh lá)
+   sang `var(--info-soft)` (xanh dương nhạt, token có sẵn) cho đồng bộ tông màu, xem `reports.js`. */
+.rp-sec-blue thead th{background:#1F4E78; color:#fff; border-bottom:1px solid #16395C}
 /* Toàn trang Báo cáo: cột số liệu căn giữa (không căn phải như mặc định .num ở base.css) */
 .rp-sec td.num,.rp-sec th.num{text-align:center}
 .rp-export{position:relative; display:inline-flex}

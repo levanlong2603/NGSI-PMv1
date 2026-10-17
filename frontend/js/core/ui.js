@@ -2,9 +2,27 @@
 /* Khung giao diện: header, menu, vẽ màn hình, thành phần dùng chung, form trượt (drawer) */
 /* ================= shell ================= */
 function avatarInitials(name){ return (name||"").trim().split(/\s+/).slice(-2).map(w=>w[0]).join("").toUpperCase(); }
+const NAV_CHEV = '<svg class="nav-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
 function renderNav(){
   const navBadge = id => { const fn = NAV_BADGE[id]; const n = fn ? fn() : 0; return n ? `<span class="nav-badge">${n>99?"99+":n}</span>` : ""; };
-  const btn = v => `<button data-view="${v.id}" ${S.view===v.id?'aria-current="page"':''} title="${esc(v.label)}">${ICONS[v.icon]}<span>${esc(v.label)}</span>${navBadge(v.id)}</button>`;
+  /* `v.children` (mảng {label, act(), active()}) – mục menu TRÁI tự xổ ra mục con thay vì điều hướng thẳng,
+     tham khảo kiểu menu xổ của 1 app khác (yêu cầu người dùng, áp dụng đầu tiên cho "Báo cáo" – xem
+     VIEWS.splice() ở reports.js). Cơ chế GENERIC, core không biết gì về state riêng của module gọi: bấm
+     mục cha chỉ xổ/đóng (`S.navOpen[v.id]`, không điều hướng – đúng hành vi app tham khảo, mục cha không
+     có trang riêng); bấm mục con gọi `child.act()` (module tự set state của nó) rồi mới đổi `S.view`.
+     Sidebar thu gọn (body.side-collapsed, chỉ còn icon): ẩn hẳn khối mục con (plan.css… không, xem base.css
+     `body.side-collapsed .nav-sub`) vì không đủ chỗ hiện chữ – hạn chế đã biết, chưa xử lý xổ nổi kiểu
+     flyout khi thu gọn, để sau nếu được yêu cầu. */
+  const btn = v => {
+    if(v.children){
+      const active = S.view===v.id;
+      const open = (S.navOpen && v.id in S.navOpen) ? S.navOpen[v.id] : active;
+      const kids = v.children.map((c,ci)=>`<button type="button" data-navkid="${v.id}|${ci}" ${c.active&&c.active()?'aria-current="page"':''}>${esc(c.label)}</button>`).join("");
+      return `<button type="button" class="nav-grp-toggle${active?" active":""}" data-navgrp="${v.id}" aria-expanded="${open}" title="${esc(v.label)}">${ICONS[v.icon]}<span>${esc(v.label)}</span>${navBadge(v.id)}${NAV_CHEV}</button>
+        <div class="nav-sub" ${open?"":"hidden"}>${kids}</div>`;
+    }
+    return `<button data-view="${v.id}" ${S.view===v.id?'aria-current="page"':''} title="${esc(v.label)}">${ICONS[v.icon]}<span>${esc(v.label)}</span>${navBadge(v.id)}</button>`;
+  };
   /* Gom theo nhóm có tiêu đề nhỏ (vd "DASHBOARD & QUẢN LÝ" / "CÀI ĐẶT"): nhóm đầu tiên trước dấu {sep:true}
      đầu tiên trong VIEWS, nhóm sau là phần còn lại. Chỉ đổi cách hiển thị, không đổi danh sách/route màn hình. */
   const sepI = VIEWS.findIndex(v=>v.sep);
@@ -26,7 +44,32 @@ function renderNav(){
   const allOpt = isAdmin ? `<option value="__all__" ${S.me==="__all__"?"selected":""}>— Tất cả —</option>` : '<option value="">— chọn tên —</option>';
   sel.innerHTML = allOpt + names.map(n=>`<option ${n===S.me?"selected":""}>${esc(n)}</option>`).join("");
 }
-document.getElementById("nav").addEventListener("click", e => { const b=e.target.closest("button[data-view]"); if(!b) return; S.view=b.dataset.view; store("view",S.view); render(); document.getElementById("main").scrollTop=0; });
+document.getElementById("nav").addEventListener("click", e => {
+  const kid = e.target.closest("button[data-navkid]");
+  if(kid){
+    const [vid, ci] = kid.dataset.navkid.split("|");
+    const v = VIEWS.find(x=>x.id===vid);
+    const child = v && v.children && v.children[+ci];
+    if(!child) return;
+    if(child.act) child.act();
+    S.view = vid; store("view", S.view);
+    S.navOpen = S.navOpen||{}; S.navOpen[vid] = true;
+    render(); document.getElementById("main").scrollTop = 0;
+    return;
+  }
+  const grp = e.target.closest("button[data-navgrp]");
+  if(grp){
+    const id = grp.dataset.navgrp;
+    S.navOpen = S.navOpen||{};
+    const cur = (id in S.navOpen) ? S.navOpen[id] : (S.view===id);
+    S.navOpen[id] = !cur;
+    render();
+    return;
+  }
+  const b = e.target.closest("button[data-view]");
+  if(!b) return;
+  S.view=b.dataset.view; store("view",S.view); render(); document.getElementById("main").scrollTop=0;
+});
 document.getElementById("meSel").addEventListener("change", e => { S.me=e.target.value; store("me",S.me); render(); });
 
 /* ================= sidebar thu gọn/phóng to ================= */
@@ -49,7 +92,7 @@ const setNavOpen = on => { document.body.classList.toggle("nav-open", on); tbMen
 tbMenu.addEventListener("click", e => { e.stopPropagation(); setNavOpen(!document.body.classList.contains("nav-open")); });
 document.getElementById("navScrim").addEventListener("click", () => setNavOpen(false));
 document.addEventListener("keydown", e => { if(e.key==="Escape" && document.body.classList.contains("nav-open")) setNavOpen(false); });
-document.getElementById("nav").addEventListener("click", e => { if(e.target.closest("button[data-view]")) setNavOpen(false); });
+document.getElementById("nav").addEventListener("click", e => { if(e.target.closest("button[data-view],button[data-navkid]")) setNavOpen(false); });
 mobileMQ.addEventListener("change", () => { setNavOpen(false); applyCollapsed(); syncSideToggleLabel(); });
 sideToggleBtn.addEventListener("click", () => {
   const on = document.body.classList.toggle("side-collapsed");

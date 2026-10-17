@@ -55,7 +55,7 @@ function planContent(){
         <div class="strip-cell">${strip(p, "plan", "planSel")}</div>
         <div class="badges">${p._late?`<span class="pill bad">${p._late} quá hạn</span>`:""}${p._stuck?`<span class="pill warn">${p._stuck} vướng</span>`:""}${p._soon?`<span class="pill info">${p._soon} sắp hạn</span>`:""}${!(p.tasks||[]).length?'<span class="pill mute">Chưa có đầu việc</span>':!p._late&&!p._stuck&&!p._soon?'<span class="pill ok">Đúng tiến độ</span>':""}</div>
       </div>`;
-      if(open) body += planDetail(p);
+      if(open) body += planDetail(p, true);
     }
     body += `</section>`;
   }
@@ -77,24 +77,122 @@ ACTIONS["planzoom"] = el => {
   else S.planZoom = Math.min(1.5, Math.max(0.5, Math.round((planZoomLevel()+d)*10)/10));
   render();
 };
-function planDetail(p){
+/* "Tiến độ theo tuần" – lưới Gantt theo tuần (mỗi cột thứ 2→CN), tham khảo ý tưởng sheet Report của file
+   mẫu thật (xem CLAUDE.md "Bộ công thức sheet Report" – hướng 3 "Gantt theo tuần thay cho thanh tiến độ",
+   trước ghi CHƯA làm, nay bắt đầu làm theo yêu cầu người dùng). Excel gốc tô CHỒNG 3 dải màu/1 ô (kế hoạch
+   gốc + điều chỉnh + thực tế cùng lúc nếu tuần đó nằm trong cả 3 khoảng) bằng Conditional Formatting; bản
+   web này ĐƠN GIẢN HOÁ còn 1 màu/đầu việc/tuần – chọn theo đúng thứ tự ưu tiên "ngày khả dụng gần nhất" đã
+   dùng nhất quán trong app (Thực tế → HĐ điều chỉnh → HĐ gốc, xem msDate() ở model.js), khác Excel có chủ
+   đích: tránh 1 ô phải tô nhiều lớp màu chồng (khó đọc trên màn hẹp hơn Excel), đổi lại màu luôn phản ánh
+   đúng khoảng ngày "đang dùng thật" của đầu việc đó tại thời điểm xem. Chỉ hiện ở trang "Tổng quan → bấm dự
+   án" (planDetail(p) không extra) – xem nút "Tiến độ theo tuần" thay cho "Xoá dự án"/"Sửa thông tin" cũ ở
+   đó (theo yêu cầu người dùng, trang báo cáo không cần sửa/xoá, các nút chức năng khác sẽ thêm dần sau). */
+const PLAN_GANTT_COLOR = {act:"#70AD47", adj:"#8064A2", hd:"#5B9BD5"};
+/* Lấy đúng 1 cặp ngày "đang dùng thật" của 1 đầu việc + nguồn (act/adj/hd) để tô màu – PHẢI lấy nguyên cặp
+   bắt đầu+kết thúc CÙNG 1 bậc (không trộn như msDate() ở model.js, nơi đó trộn độc lập từng vế cho mục đích
+   khác – "ngày khả dụng gần nhất" đơn lẻ, không cần cặp sạch). Trả null nếu đầu việc không có cặp ngày nào
+   đủ cả 2 đầu. */
+function planTaskBar(t){
+  const pairs = [["act",t.actStart,t.actEnd], ["adj",t.adjStart,t.adjEnd], ["hd",t.hdStart,t.deadline]];
+  for(const [tier,s,e] of pairs){
+    if(!s || !e) continue;
+    let color = PLAN_GANTT_COLOR[tier];
+    /* Cảnh báo (đầu việc đang mở mà quá hạn/sắp hạn) ĐÈ LÊN màu theo nguồn ngày – cảnh báo quan trọng hơn
+       hiển thị đúng khung kế hoạch, cùng logic ưu tiên đã dùng ở cột "Cảnh báo"/dải cảnh báo theo giai đoạn. */
+    if(OPEN.has(t.status)){
+      if(t.warns.some(w=>w[1]==="Quá hạn")) color = "#C00000";
+      else if(t.warns.some(w=>w[1]==="Sắp đến hạn")) color = "#F4B183";
+    }
+    return {start:s, end:e, color, tier};
+  }
+  return null;
+}
+function planGanttPanel(p){
+  const bars = p._tasks.map(t=>({t, bar:planTaskBar(t)})).filter(x=>x.bar);
+  if(!bars.length) return `<div class="empty" style="margin-bottom:12px">Chưa có đầu việc nào đủ cả ngày bắt đầu + kết thúc để vẽ tiến độ theo tuần.</div>`;
+  let minD=null, maxD=null;
+  for(const {bar} of bars){ if(!minD||bar.start<minD) minD=bar.start; if(!maxD||bar.end>maxD) maxD=bar.end; }
+  const curWeekMon = mondayOf(todayISO());
+  let cur = mondayOf(minD); const endMon = mondayOf(maxD);
+  const weeks = [];
+  while(cur<=endMon && weeks.length<156){ weeks.push(cur); cur = addDays(cur,7); } // chặn tối đa 3 năm, tránh bảng khổng lồ nếu dữ liệu ngày lỗi
+  const head = weeks.map(w=>`<th class="plan-gc${w===curWeekMon?" plan-gc-cur":""}">Tuần ${isoWeek(w)}<div class="small" style="font-weight:400">${dmy(w)}–${dmy(addDays(w,6))}</div></th>`).join("");
+  const rows = bars.map(({t,bar})=>{
+    const cells = weeks.map(w=>{
+      const wEnd = addDays(w,6);
+      const covered = bar.start<=wEnd && bar.end>=w;
+      const cur = w===curWeekMon;
+      return `<td class="plan-gc${cur?" plan-gc-cur":""}"${covered?` style="background:${bar.color}"`:""}></td>`;
+    }).join("");
+    return `<tr><td class="plan-gc-label" title="${esc(t.dv)}">${t.no?esc(t.no)+". ":""}${esc(planShortName(t.dv))}</td>${cells}</tr>`;
+  }).join("");
+  return `<div class="plan-gantt-legend small muted">
+      <span><i style="background:${PLAN_GANTT_COLOR.hd}"></i>Kế hoạch HĐ gốc</span>
+      <span><i style="background:${PLAN_GANTT_COLOR.adj}"></i>HĐ điều chỉnh</span>
+      <span><i style="background:${PLAN_GANTT_COLOR.act}"></i>Thực tế</span>
+      <span><i class="plan-gc-cur" style="width:14px; height:14px"></i>Tuần hiện tại</span>
+      <span><i style="background:#C00000"></i>Quá hạn</span>
+      <span><i style="background:#F4B183"></i>Sắp đến hạn</span>
+    </div>
+    <div class="plan-gantt-scroll"><table class="plan-gantt-tbl"><thead><tr><th class="plan-gc-label">Đầu việc</th>${head}</tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+}
+ACTIONS["plangantt"] = el => { S.planGanttOpen = S.planGanttOpen||{}; const id=el.dataset.id; S.planGanttOpen[id] = !S.planGanttOpen[id]; render(); };
+ACTIONS["planurgent"] = el => { S.planUrgentOpen = S.planUrgentOpen||{}; const id=el.dataset.id; S.planUrgentOpen[id] = !S.planUrgentOpen[id]; render(); };
+ACTIONS["planpay"] = el => { S.planPayOpen = S.planPayOpen||{}; const id=el.dataset.id; S.planPayOpen[id] = !S.planPayOpen[id]; render(); };
+/* extra=true: THAY cột "Đánh giá" (diff actEnd/deadline) bằng 2 cột "Cảnh báo" (t.warns – Quá hạn/Sắp đến
+   hạn/Ma sát cao…, warnPills() core/ui.js, rộng cố định 180px) + "Note" (t.note – Ghi chú của trưởng phòng,
+   chỉ trưởng phòng/phó phòng/admin sửa được qua taskForm()) – CHỈ bật ở tab "Kế hoạch dự án" (planContent(),
+   gọi planDetail(p,true)); trang chi tiết 1 dự án mở từ tab "Tổng quan" (ovDetailHeader()+planDetail(p),
+   project-overview.js) giữ nguyên cột "Đánh giá" như cũ, KHÔNG có Cảnh báo/Note. Bỏ hẳn "Đánh giá" khi có
+   Cảnh báo (thay vì giữ cả 2) vì trùng ý: "Đánh giá" chỉ là 1 góc nhìn hẹp (so actEnd với deadline),
+   "Cảnh báo" bao quát hơn (quá hạn/sắp hạn/ma sát cao) – theo đúng yêu cầu người dùng, 2 đường vào cùng 1
+   bảng nhưng mức chi tiết khác nhau: "Kế hoạch dự án" là bảng làm việc đầy đủ, "Tổng quan → bấm dự án" là
+   bảng xem nhanh kiểu báo cáo. */
+function planDetail(p, extra, noTools){
+  const cols = PLAN_COLS + (extra?1:0);
+  const ganttOpen = !!(S.planGanttOpen && S.planGanttOpen[p.id]);
+  const urgentOpen = !!(S.planUrgentOpen && S.planUrgentOpen[p.id]);
+  const payOpen = !!(S.planPayOpen && S.planPayOpen[p.id]);
+  /* noTools=true (chỉ dùng từ rpProjectContent(), reports.js): ẩn hẳn 3 nút Tiến độ theo tuần/Đầu việc
+     khẩn cấp/Mốc thanh toán khỏi toolbar RIÊNG của bảng này – 3 nút đó đã dọn lên thanh điều khiển chung
+     (cùng hàng "Tất cả"/chọn dự án/"← Quay lại tổng quan"/"Xuất báo cáo") theo yêu cầu người dùng, tránh
+     lặp 2 chỗ. 3 PANEL (Tiến độ theo tuần/Đầu việc khẩn cấp/Mốc thanh toán) vẫn render Ở ĐÂY như cũ – vẫn
+     đúng ý "hiển thị thành các bảng riêng" (mỗi panel 1 `<section class="panel">` riêng ngay trên bảng
+     chính) – chỉ NÚT bấm mở/đóng là chuyển chỗ, trạng thái đóng/mở (S.planGanttOpen…) dùng chung nên nút ở
+     đâu bấm cũng ra đúng kết quả. */
   let out = `<div class="pdetail">
     <div class="toolbar" style="margin-bottom:12px; justify-content:space-between">
-      <div>${canManageProject(p)?`${canDeleteProject(p)?`<button class="btn danger" data-act="delp" data-id="${esc(p.id)}">Xoá dự án</button>`:""}<button class="btn" data-act="editp" data-id="${esc(p.id)}">Sửa thông tin</button>`:""}</div>
+      <div>${extra ? (canManageProject(p)?`${canDeleteProject(p)?`<button class="btn danger" data-act="delp" data-id="${esc(p.id)}">Xoá dự án</button>`:""}<button class="btn" data-act="editp" data-id="${esc(p.id)}">Sửa thông tin</button>`:"")
+        : (noTools ? "" : `<button class="btn${ganttOpen?" primary":""}" data-act="plangantt" data-id="${esc(p.id)}" aria-pressed="${ganttOpen}">Tiến độ theo tuần</button>
+        <button class="btn${urgentOpen?" primary":""}" data-act="planurgent" data-id="${esc(p.id)}" aria-pressed="${urgentOpen}">Đầu việc khẩn cấp</button>
+        <button class="btn${payOpen?" primary":""}" data-act="planpay" data-id="${esc(p.id)}" aria-pressed="${payOpen}">Mốc thanh toán</button>`)}</div>
       <div class="plan-zoom" role="group" aria-label="Phóng to/thu nhỏ bảng">
         <button data-act="planzoom" data-d="-0.1" title="Thu nhỏ" aria-label="Thu nhỏ">−</button>
         <span class="lv">${Math.round(planZoomLevel()*100)}%</span>
         <button data-act="planzoom" data-d="0.1" title="Phóng to" aria-label="Phóng to">+</button>
       </div></div>`;
-  const rows = planTreeRows(p, {cols:PLAN_COLS});
-  out += `<div class="tbl-wrap panel plan-grid"><div class="plan-scroll"><table style="min-width:2050px; white-space:nowrap; zoom:${planZoomLevel()}"><thead>
+  /* Đang mở 1 trong 3 panel (chỉ áp dụng khi !extra, tức trang Báo cáo dự án) → ẨN HẲN bảng đầu việc chính
+     bên dưới thay vì xếp chồng cả 2 – theo yêu cầu người dùng ("nó là riêng mà", chú thích màu Gantt đứng
+     ngay sát bảng chính nhìn như 1 bảng dễ gây hiểu lầm chú thích đó mô tả luôn bảng chính). Đóng cả 3
+     panel thì bảng chính hiện lại bình thường. Tab "Kế hoạch dự án" (`extra=true`) không có khái niệm 3
+     panel này nên luôn hiện bảng chính, không bị ảnh hưởng. */
+  const anyPanelOpen = !extra && (ganttOpen || urgentOpen || payOpen);
+  if(!extra && ganttOpen) out += `<section class="panel" style="margin-bottom:12px"><div class="panel-b"><h2 style="margin:0 0 10px">Tiến độ theo tuần</h2>${planGanttPanel(p)}</div></section>`;
+  if(!extra && urgentOpen) out += `<section class="panel" style="margin-bottom:12px"><div class="panel-b"><h2 style="margin:0 0 10px">Đầu việc khẩn cấp / cần chú ý</h2>${planUrgentPanel(p)}</div></section>`;
+  if(!extra && payOpen) out += `<section class="panel" style="margin-bottom:12px"><div class="panel-b"><h2 style="margin:0 0 10px">Mốc thanh toán</h2>${planPaymentPanel(p)}</div></section>`;
+  if(!anyPanelOpen){
+    const rows = planTreeRows(p, {cols, extra});
+    out += `<div class="tbl-wrap panel plan-grid${extra?"":" plan-grid-report"}"><div class="plan-scroll"><table style="min-width:${2050+(extra?150:0)}px; white-space:nowrap; zoom:${planZoomLevel()}"><thead>
     <tr><th rowspan="2" class="plan-no">No.</th><th rowspan="2" class="plan-dv" style="white-space:normal">Đầu việc</th><th rowspan="2">Trạng thái</th><th rowspan="2">Ưu tiên</th><th rowspan="2">Phụ trách</th>
       <th colspan="2">Thời gian (ngày)</th><th colspan="2">Kế hoạch theo HĐ</th><th colspan="2">Kế hoạch HĐ điều chỉnh</th><th colspan="2">Kế hoạch dự kiến</th><th colspan="2">Kế hoạch thực tế</th>
-      <th rowspan="2">Đánh giá</th></tr>
+      ${extra?`<th rowspan="2" style="width:180px; white-space:normal">Cảnh báo</th><th rowspan="2" style="white-space:normal">Note</th>`:`<th rowspan="2">Đánh giá</th>`}</tr>
     <tr><th>Theo thực tế</th><th>Theo đề xuất</th><th>Bắt đầu</th><th>Kết thúc</th><th>Bắt đầu</th><th>Kết thúc</th><th>Bắt đầu</th><th>Kết thúc</th><th>Bắt đầu</th><th>Kết thúc</th></tr>
     </thead>
-    <tbody>${rows||`<tr><td colspan="${PLAN_COLS}"><div class="empty"><b>Dự án chưa có đầu việc.</b>${canManageProject(p)?`<button class="btn primary" style="margin-top:10px" data-act="addtask" data-id="${esc(p.id)}">+ Đầu việc</button>`:""}</div></td></tr>`}</tbody></table></div></div>
-    <p class="small muted" style="margin:8px 0 0">Bấm vào một đầu việc để xem chi tiết${S.canEdit?", sửa hoặc đánh giá khi hoàn thành":""}.</p></div>`;
+    <tbody>${rows||`<tr><td colspan="${cols}"><div class="empty"><b>Dự án chưa có đầu việc.</b>${canManageProject(p)?`<button class="btn primary" style="margin-top:10px" data-act="addtask" data-id="${esc(p.id)}">+ Đầu việc</button>`:""}</div></td></tr>`}</tbody></table></div></div>
+    <p class="small muted" style="margin:8px 0 0">Bấm vào một đầu việc để xem chi tiết${S.canEdit?", sửa hoặc đánh giá khi hoàn thành":""}.</p>`;
+  }
+  out += `</div>`;
   return out;
 }
 /* "Mốc chính dự án" – tự nhận diện từ No./tên đầu việc theo quy tắc đang cấu hình (Cài đặt → "Nhận diện
@@ -102,17 +200,17 @@ function planDetail(p){
    trong file mẫu thật của phòng (xem CLAUDE.md "Bộ công thức sheet Report"). Gấp/mở bằng <details> thuần,
    không cần thêm state riêng; tự ẩn hẳn khi dự án không có mốc nào khớp quy tắc (vd dự án không theo đúng
    quy ước "No." A/I/1/1.1). */
-function planMilestonesPanel(p){
-  const ms = p._milestones || [];
-  if(!ms.length) return "";
-  const mode = (S.milestoneRule && S.milestoneRule.mode) || 2;
-  const modeInfo = MILESTONE_RULE_MODES.find(m=>m[0]===mode) || MILESTONE_RULE_MODES[1];
+/* Dựng bảng 4 cặp ngày (STT/Hạng mục-Giai đoạn/Trạng thái/Ưu tiên/HĐ gốc/HĐ điều chỉnh/Dự kiến/Thực tế/
+   Chênh lệch/Đánh giá) y hệt mẫu bảng "II. CÁC MỐC CHÍNH CỦA DỰ ÁN" của sheet Report – dùng chung cho
+   `planMilestonesPanel()` (lọc theo S.milestoneRule) và `planPaymentPanel()` (lọc theo nhánh "THANH TOÁN")
+   vì cả 2 chỉ khác nhau ở DANH SÁCH đầu vào, giống hệt phần hiển thị. */
+function planMsTable(list){
   const d = x => x?dmy(x):"–";
   /* Màu nền ô "Trạng thái", đúng Conditional Formatting cột D của bảng mốc chính trong file mẫu thật
      (D17:D87: Hoàn thành=xanh lá nhạt, Đang thực hiện=xanh dương nhạt, Pending=vàng) – CHỈ tô riêng ô này
      (không tô cả dòng như đã thử ở bảng đầu việc chính rồi bỏ theo phản hồi người dùng, xem CLAUDE.md). */
   const stBg = {"Hoàn thành":"var(--ok-soft)", "Đang làm":"var(--info-soft)", "Tạm dừng":"var(--warn-soft)"};
-  const rows = ms.map((m,i) => {
+  const rows = list.map((m,i) => {
     const no = String(m.no||"").trim();
     const hdrKind = msLetterNo(no) ? "a" : msRomanNo(no) ? "r" : "";
     /* "Chênh lệch (ngày)" + "Đánh giá": Thực tế – Kế hoạch theo HĐ gốc (actEnd − deadline), y hệt công
@@ -136,14 +234,82 @@ function planMilestonesPanel(p){
       <td style="text-align:center">${diff==null?"–":diff}</td>
       <td style="text-align:center">${assess||"–"}</td></tr>`;
   }).join("");
-  return `<details class="panel" style="margin-bottom:12px"><summary class="panel-h" style="cursor:pointer"><h2>Mốc chính dự án <span class="small muted">· ${ms.length} mốc</span></h2></summary>
-    <div class="panel-b small muted" style="padding-top:0">Chế độ nhận diện mốc: <b>Mode ${mode}</b> — ${esc(modeInfo[1])}. Đổi ở Cài đặt → "Nhận diện mốc chính &amp; cảnh báo".</div>
-    <div class="tbl-wrap plan-grid" style="max-height:60vh"><table style="min-width:1400px"><thead>
+  return `<div class="tbl-wrap plan-grid" style="max-height:60vh"><table style="min-width:1400px"><thead>
       <tr><th rowspan="2" class="plan-no">STT</th><th rowspan="2" class="plan-dv" style="white-space:normal">Hạng mục / Giai đoạn</th><th rowspan="2">Trạng thái</th><th rowspan="2">Ưu tiên</th>
         <th colspan="2">Kế hoạch (HĐ gốc)</th><th colspan="2">HĐ điều chỉnh</th><th colspan="2">Dự kiến</th><th colspan="2">Thực tế</th>
         <th rowspan="2" style="white-space:normal">Chênh lệch<br>(ngày)</th><th rowspan="2">Đánh giá</th></tr>
       <tr><th>Bắt đầu</th><th>Kết thúc</th><th>Bắt đầu</th><th>Kết thúc</th><th>Bắt đầu</th><th>Kết thúc</th><th>Bắt đầu</th><th>Kết thúc</th></tr>
-    </thead><tbody>${rows}</tbody></table></div></details>`;
+    </thead><tbody>${rows}</tbody></table></div>`;
+}
+function planMilestonesPanel(p){
+  const ms = p._milestones || [];
+  if(!ms.length) return "";
+  const mode = (S.milestoneRule && S.milestoneRule.mode) || 2;
+  const modeInfo = MILESTONE_RULE_MODES.find(m=>m[0]===mode) || MILESTONE_RULE_MODES[1];
+  return `<details class="panel" style="margin-bottom:12px"><summary class="panel-h" style="cursor:pointer"><h2>Mốc chính dự án <span class="small muted">· ${ms.length} mốc</span></h2></summary>
+    <div class="panel-b small muted" style="padding-top:0">Chế độ nhận diện mốc: <b>Mode ${mode}</b> — ${esc(modeInfo[1])}. Đổi ở Cài đặt → "Nhận diện mốc chính &amp; cảnh báo".</div>
+    ${planMsTable(ms)}</details>`;
+}
+/* "Mốc thanh toán" (tham khảo "IV. GANTT DÒNG TIỀN — CÁC MỐC THANH TOÁN" của sheet Report) – lọc đúng
+   nhánh đầu việc nằm dưới 1 dòng hạng mục chữ cái (A/B/C…) có chữ "THANH TOÁN" trong tên, dùng lại NGUYÊN
+   logic `inPayment` của `msClassify()` (model.js, reset mỗi dòng chữ cái đơn mới, bật nếu tên dòng đó chứa
+   "THANH TOÁN") – viết lại vòng lặp riêng ở đây vì msClassify() trả về mảng boolean "là mốc chính" theo
+   mode đang cấu hình (mục đích khác hẳn, không tách lọc riêng nhánh thanh toán được). KHÔNG phụ thuộc
+   S.milestoneRule – nhánh thanh toán luôn cố định theo đúng tên "THANH TOÁN", không có mode chọn. */
+function planPaymentTasks(p){
+  let inPayment = false;
+  const out = [];
+  for(const t of p._tasks){
+    const no = String(t.no||"").trim();
+    if(msLetterNo(no)) inPayment = msPayment(t.dv);
+    if(inPayment && (no!=="" || String(t.dv||"").trim()!=="")) out.push(t);
+  }
+  return out;
+}
+function planPaymentPanel(p){
+  const list = planPaymentTasks(p);
+  return `<div class="small muted" style="margin-bottom:8px">Tự nhận diện toàn bộ đầu việc dưới hạng mục có chữ "THANH TOÁN" trong tên, không phụ thuộc chế độ nhận diện mốc chính.</div>
+    ${list.length ? planMsTable(list) : `<div class="empty">Dự án không có hạng mục nào tên chứa "THANH TOÁN".</div>`}`;
+}
+/* "Đầu việc khẩn cấp / cần chú ý" (tham khảo "III. CÁC ĐẦU VIỆC KHẨN CẤP / CẦN CHÚ Ý (URGENT)" của sheet
+   Report) – 2 nhóm tự lọc từ chính `t.warns` đã tính sẵn ở derive() (model.js, không tính lại riêng):
+   nhóm A = đầu việc đang mở mà có cảnh báo "Quá hạn", nhóm B = có cảnh báo "Sắp đến hạn" (ngưỡng ngày lấy
+   đúng S.milestoneRule.dueSoonDays đang cấu hình – Cài đặt → "Nhận diện mốc chính & cảnh báo", KHÔNG tự
+   đặt ngưỡng riêng cho panel này). Sắp theo "ngày khả dụng gần nhất" (tái dùng planTaskBar() lấy cặp ngày
+   đang dùng thật) để đầu việc trễ/sắp đến hạn NHIỀU NHẤT lên trước, khớp đúng mục đích "bảng khẩn cấp". */
+function planUrgentGroup(title, cls, list){
+  const d = x => x?dmy(x):"–";
+  const rows = list.map((t,i) => {
+    const bar = planTaskBar(t);
+    const today = todayISO();
+    const lateDays = bar ? days(bar.end, today) : null;
+    return `<tr class="click" data-act="task" data-pid="${esc(t.p.id)}" data-id="${esc(t.id)}" tabindex="0">
+      <td class="plan-no" style="text-align:center">${i+1}</td>
+      <td class="plan-dv" style="text-align:left">${t.no?esc(t.no)+". ":""}${esc(planShortName(t.dv))}</td>
+      <td>${stPill(t.status)}</td>
+      <td style="text-align:center">${t.pr?`<span class="pill ${t.pr==="Cao"?"bad":"mute"}">${esc(t.pr)}</span>`:"–"}</td>
+      <td>${d(bar&&bar.start)}</td><td>${d(bar&&bar.end)}</td>
+      <td style="text-align:center">${lateDays==null?"–":lateDays}</td>
+      <td>${esc(t.owner||"–")}</td>
+      <td style="white-space:normal; text-align:left">${esc(t.note||"–")}</td></tr>`;
+  }).join("");
+  return `<div class="plan-urgent-hdr ${cls}">${esc(title)} <span class="small">· ${list.length} đầu việc</span></div>
+    ${list.length ? `<div class="tbl-wrap plan-grid" style="max-height:40vh"><table style="min-width:900px"><thead><tr>
+      <th class="plan-no">STT</th><th class="plan-dv" style="white-space:normal">Hạng mục / Đầu việc</th><th>Trạng thái</th><th>Ưu tiên</th>
+      <th>Bắt đầu</th><th>Kết thúc</th><th style="white-space:normal">Số ngày</th><th>Người phụ trách</th><th style="white-space:normal">Note</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>` : `<div class="empty small">Không có đầu việc nào.</div>`}`;
+}
+function planUrgentPanel(p){
+  const dueSoonDays = (S.milestoneRule && S.milestoneRule.dueSoonDays) ?? 14;
+  const late = p._tasks.filter(t=>OPEN.has(t.status) && t.warns.some(w=>w[1]==="Quá hạn"));
+  const soon = p._tasks.filter(t=>OPEN.has(t.status) && t.warns.some(w=>w[1]==="Sắp đến hạn"));
+  const byLate = (a,b) => { const ba=planTaskBar(a), bb=planTaskBar(b); return (ba?ba.end:"9999").localeCompare(bb?bb.end:"9999"); };
+  late.sort(byLate); soon.sort(byLate);
+  return `<div class="small muted" style="margin-bottom:8px">Ngưỡng "Sắp đến hạn": <b>${dueSoonDays} ngày</b>. Đổi ở Cài đặt → "Nhận diện mốc chính &amp; cảnh báo".</div>
+    <div style="display:flex; flex-direction:column; gap:14px">
+      ${planUrgentGroup("A. QUÁ HẠN", "plan-urgent-a", late)}
+      ${planUrgentGroup("B. ĐẾN HẠN TRONG ≤ "+dueSoonDays+" NGÀY", "plan-urgent-b", soon)}
+    </div>`;
 }
 /* Bảng đầu việc PHẲNG, không gấp/mở – đúng thứ tự lưu trong p.tasks (giữ nguyên thứ tự khung mẫu lúc tạo
    dự án, xem catFlatTable() ở settings.js/projectForm() ở plan.js). "No." (t.no, tự gõ hoặc copy từ khung
@@ -167,10 +333,14 @@ function planShortName(dv){ return dv||""; }
    nội dung sau bằng cách bấm vào dòng) và "Xoá dòng" (xoá thẳng, có xác nhận) – nhanh hơn phải mở form rồi
    mới xoá được như trước, vì khung mẫu hiện có không khớp đúng quy trình thật của PM nên người dùng cần tự
    do thêm/bớt/sắp xếp lại đầu việc trực tiếp trên bảng, giống thao tác chèn/xoá hàng Excel. */
-function planTaskRow(t, i, lvl=1, p){
+function planTaskRow(t, i, lvl=1, p, extra){
   const idle = t.status==="Chưa bắt đầu";
   const d = x => x?dmy(x):"–";
-  const canAct = p && canManageProject(p);
+  /* Nút chèn/xoá dòng CHỈ hiện ở tab "Kế hoạch dự án" (extra=true) – trang Báo cáo dự án (extra falsy) là
+     trang xem/xuất báo cáo, không phải chỗ sửa dữ liệu (dù tài khoản có quyền canManageProject(p) vẫn
+     không nên sửa dự án từ đây), theo đúng phản hồi người dùng ("dù sao cũng không sửa được"). Muốn
+     chèn/xoá dòng vẫn làm được bình thường, chỉ cần sang đúng tab "Kế hoạch dự án". */
+  const canAct = extra && p && canManageProject(p);
   /* Nổi bật trực quan "No." là hạng mục chữ cái (A/B/C…) hay số La Mã (I/II/III…) để phân biệt ngay bằng
      mắt, dùng ĐÚNG quy tắc loại trừ I/V/X đã thống nhất (msLetterNo()/msRomanNo(), model.js) – không tự vẽ
      lại quy tắc riêng ở đây. Chữ cái = cấp hạng mục lớn nhất → đậm nhất (nền + chữ đậm cả dòng); La Mã =
@@ -196,14 +366,13 @@ function planTaskRow(t, i, lvl=1, p){
       <td>${d(t.adjStart)}</td><td>${d(t.adjEnd)}</td>
       <td>${d(t.expStart)}</td><td>${d(t.expEnd)}</td>
       <td>${d(t.actStart)}</td><td>${d(t.actEnd)}</td>
-      <td style="text-align:center">${(()=>{ if(!t.actEnd||!t.deadline) return "–"; const diff=days(t.deadline,t.actEnd);
-        return diff===0?'<span class="pill ok">✓ Đúng hạn</span>':diff<0?`<span class="pill ok">✓ Sớm ${Math.abs(diff)} ngày</span>`:`<span class="pill bad">⚠ Trễ ${diff} ngày</span>`; })()}</td></tr>`;
+      ${extra?`<td style="white-space:normal">${warnPills(t.warns)||"–"}</td><td style="white-space:normal; text-align:left">${esc(t.note||"–")}</td>`:`<td style="text-align:center">${(()=>{ if(!t.actEnd||!t.deadline) return "–"; const diff=days(t.deadline,t.actEnd);
+        return diff===0?'<span class="pill ok">✓ Đúng hạn</span>':diff<0?`<span class="pill ok">✓ Sớm ${Math.abs(diff)} ngày</span>`:`<span class="pill bad">⚠ Trễ ${diff} ngày</span>`; })()}</td>`}</tr>`;
 }
-/* o.row dựng dòng (mặc định planTaskRow), o.cols số cột – chỉ còn 2 tham số thật sự dùng vì bảng không
-   còn gấp/mở theo hạng mục nữa (đã đổi theo yêu cầu người dùng: xem cùng thay đổi ở settings.js). */
+/* o.row dựng dòng (mặc định planTaskRow), o.cols số cột, o.extra bật 2 cột Cảnh báo/Note (xem planDetail()). */
 function planTreeRows(p, o={}){
   const rowFn = o.row||planTaskRow;
-  return p._tasks.map((t,i) => rowFn(t, i+1, 1, p)).join("");
+  return p._tasks.map((t,i) => rowFn(t, i+1, 1, p, o.extra)).join("");
 }
 /* ===== Nhập dự án từ file Excel (mẫu bảng tiến độ giấy của phòng: sheet "Infor" + "NGSI") =====
    Tải "lười" ExcelJS giống hệt cách reports.js làm cho xuất file (rpEnsureExcel()) – bản sao riêng tiền tố

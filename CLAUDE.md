@@ -118,9 +118,49 @@ PM sau này bám đúng thực tế):
          `out += planMilestonesPanel(p)` nữa) theo yêu cầu người dùng – hàm vẫn giữ nguyên trong file (không
          xoá, phòng khi cần dùng lại), chỉ không còn hiện trên "Kế hoạch dự án" nữa. Đừng tự ý gọi lại hàm
          này nếu người dùng chưa yêu cầu.
-      3. **Gantt theo tuần thay cho thanh tiến độ** – CHƯA làm (việc lớn nhất, để sau nếu được yêu cầu
-         riêng): dựng lưới tuần + tô theo "ngày khả dụng gần nhất" + đổi màu theo CSS thay cho Conditional
-         Formatting của Excel.
+      3. **Gantt theo tuần** – **đã bắt đầu làm** (`planGanttPanel()`/`planTaskBar()`, `plan.js`, CSS
+         `.plan-gantt-*`/`.plan-gc*` ở `plan.css`) theo yêu cầu người dùng, dạng v1 **đơn giản hoá** so với
+         Excel: Excel gốc tô CHỒNG 3 dải màu/1 ô (kế hoạch gốc + điều chỉnh + thực tế cùng lúc nếu tuần đó
+         rơi vào cả 3 khoảng) bằng Conditional Formatting; bản web chỉ tô **1 màu/đầu việc/tuần**, chọn theo
+         đúng thứ tự ưu tiên "ngày khả dụng gần nhất" đã dùng nhất quán trong app (Thực tế → HĐ điều chỉnh →
+         HĐ gốc – nhưng lấy NGUYÊN CẶP bắt đầu+kết thúc cùng 1 bậc, khác `msDate()` ở `model.js` trộn độc
+         lập từng vế cho mục đích khác) – cố tình khác Excel để tránh 1 ô phải tô nhiều lớp chồng (khó đọc
+         trên màn hẹp hơn Excel), đổi lại màu luôn đúng khoảng ngày "đang dùng thật" tại thời điểm xem. Mã
+         màu giữ nguyên đọc từ file mẫu thật (không tự chọn): HĐ gốc `#5B9BD5` (xanh dương), HĐ điều chỉnh
+         `#8064A2` (tím), Thực tế `#70AD47` (xanh lá) – đầu việc đang mở (`OPEN.has(status)`) mà quá hạn/
+         sắp hạn thì ĐÈ hẳn sang đỏ `#C00000`/cam `#F4B183` (ưu tiên cảnh báo hơn đúng màu kế hoạch). Cột
+         tuần hiện tại tô vàng nhạt `#FFF7D6` (nhạt hơn `#FFD966` gốc, dễ đọc trên nền trắng web) đè lên mọi
+         màu khác nếu trùng ô. **Hiện ở tab "Báo cáo → Báo cáo dự án"** (`rpProjectContent()`, `reports.js`
+         – xem mục cập nhật vị trí ngay dưới "Tham khảo `ptkt-appv1`..." bên dưới, trang "Tổng quan → bấm dự
+         án" cũ ĐÃ BỎ HẲN) – nút bấm mở/đóng `<button data-act="plangantt">Tiến độ theo tuần</button>`.
+         Trạng thái mở/đóng lưu phiên theo từng dự án (`S.planGanttOpen[p.id]`, không ghi CSDL, giống
+         `S.planZoom`) – hàm gốc vẫn ở `plan.js` dù gọi từ `reports.js` (plan.js nạp trước trong
+         `index.html`). **Còn thiếu/CHƯA làm**: tô chồng nhiều màu/ô như Excel gốc (quyết định bỏ hẳn, xem
+         lý do trên – không phải thiếu sót).
+      4. **"Đầu việc khẩn cấp / cần chú ý"** (`planUrgentPanel()`/`planUrgentGroup()`, `plan.js`, CSS
+         `.plan-urgent-*` ở `plan.css`) – tham khảo "III. CÁC ĐẦU VIỆC KHẨN CẤP..." của sheet Report: 2
+         nhóm A (Quá hạn)/B (Sắp đến hạn, thanh tiêu đề đỏ đậm `#8B0000`/cam `#C77A1E` chữ trắng kiểu Excel)
+         lọc thẳng từ `t.warns` đã tính sẵn ở `derive()` (không tính lại cảnh báo riêng), ngưỡng "Sắp đến
+         hạn" dùng đúng `S.milestoneRule.dueSoonDays` đang cấu hình (không có ngưỡng D90 riêng cho panel
+         này như file mẫu – dùng chung 1 ngưỡng toàn app cho nhất quán). Sắp theo ngày kết thúc của
+         `planTaskBar(t)` (cặp ngày "đang dùng thật", dùng lại hàm đã viết cho Tiến độ theo tuần) – trễ/sắp
+         hạn nhiều nhất lên đầu. Mỗi dòng bấm được thẳng vào `taskForm()` (`data-act="task" data-pid="..."`,
+         khớp đúng cơ chế `data-pid` đã dùng ở `kpiWorkHtml()` cho bảng liệt kê nhiều dự án).
+      5. **"Mốc thanh toán"** (`planPaymentPanel()`/`planPaymentTasks()`, `plan.js`) – tham khảo "IV. GANTT
+         DÒNG TIỀN — CÁC MỐC THANH TOÁN": lọc đúng nhánh đầu việc dưới 1 dòng hạng mục chữ cái có chữ
+         "THANH TOÁN" trong tên, viết lại vòng lặp `inPayment` giống hệt `msClassify()` (không gọi thẳng
+         hàm đó vì nó trả về mảng "là mốc chính theo mode", mục đích khác) – **không** phụ thuộc
+         `S.milestoneRule`, nhánh thanh toán luôn nhận diện cố định theo tên, không có mode chọn. Hiển thị
+         dùng lại nguyên `planMsTable()` (tách ra từ `planMilestonesPanel()` cũ – giờ cả 2 panel mốc chính
+         và mốc thanh toán dùng chung 1 hàm dựng bảng 4-cặp-ngày, chỉ khác danh sách đầu vào).
+      Cả 3 panel (Tiến độ theo tuần/Đầu việc khẩn cấp/Mốc thanh toán) **ban đầu** gắn vào trang riêng "Tổng
+      quan → bấm dự án" (`planDetail(p)` không `extra`, thay 2 nút "Xoá dự án"/"Sửa thông tin" cũ ở đó) –
+      **sau đó trang đó bị bỏ hẳn** (xem mục cập nhật vị trí ở "Tham khảo `ptkt-appv1`..." bên dưới), 3 nút
+      dọn nguyên sang tab "Báo cáo → Báo cáo dự án" (`rpProjectContent()`, `reports.js`), hàm/CSS/ACTIONS/
+      state gốc (`data-act="plangantt"/"planurgent"/"planpay"`, `S.planGanttOpen`/`S.planUrgentOpen`/
+      `S.planPayOpen`, đều theo `p.id`, không ghi CSDL) **vẫn ở nguyên `plan.js`/`plan.css`**, chỉ đổi NƠI
+      GỌI. Còn "nút chức năng khác" người dùng nhắc tới nếu có thêm nữa sau này, hỏi lại phạm vi cụ thể
+      trước khi làm.
       Không tự ý đổi `msClassify()`/`msLetterNo()` sang suy luận khác khi chưa thống nhất với người dùng –
       đã kiểm chứng đúng với dữ liệu thật, đổi lại dễ quay về bug cũ (lẫn chữ cái/số La Mã).
   - **Nổi bật trực quan trên bảng đầu việc** (`planTaskRow()`, `plan.js`/`plan.css`), dùng thẳng
@@ -283,6 +323,28 @@ nút `+`/`✕` mỗi dòng (`ACTIONS["addcatrow"]`/`["delcatrow"]`) chèn/xoá n
 - Dữ liệu mới: thêm dòng vào `RULES` trong `backend/server.js`; client nghe bằng `ON_SESSION.push(db => db.collection("x").onSnapshot(snap => {...; schedule();}))`.
 - Form: dùng `openForm({title, values, fields, onSave, onDelete})` (kiểu field: text, password, number, date, textarea, select, seg, check, heading, badge (hiển thị tĩnh dạng `.pill`, không phải ô nhập – dùng `text`/`tone`, không đọc/ghi `vals`), images (dán/chọn ảnh, xem mục Góp ý ở "Quy ước bắt buộc"), search (gõ để lọc trong danh sách DÀI thay cho `select` phải cuộn tìm – `options` PHẲNG `[[giá trị,nhãn],…]`, không gom nhóm như `select`; vd "Đầu việc" ở Nhập theo tuần, `weekly-input.js`. Input hiện chữ + dropdown gợi ý tối đa 200 dòng, Enter chọn gợi ý đầu tiên, rời ô mà chưa bấm chọn thì tự trả lại đúng chữ của lựa chọn đang lưu – không để chữ gõ dở lọt vào `vals`. So khớp qua `searchNorm()` – **bỏ dấu + hạ chữ thường cả 2 vế** (không phải so nguyên văn có dấu), vừa cho gõ không cần đúng dấu vừa tránh kẹt gợi ý khi gõ tiếng Việt có dấu (một số bộ gõ hệ thống ghép dấu xong không bắn lại sự kiện `input`, nên có thêm lưới an toàn nghe `compositionend` để lọc lại đúng giá trị cuối). Code ở `openForm()`, `core/ui.js`, CSS `.search-field`/`.search-dd` ở `base.css`); tuỳ chọn half, required, hint, onChange, placeholder (riêng cho `search`).
 - Khai báo `<script src="js/modules/<ten>.js">` trong `index.html` trước `js/main.js`. CSS riêng: `frontend/css/<ten>.css`.
+- **Mục menu trái xổ ra mục con** (thay vì điều hướng thẳng tới 1 trang) – thêm `children:[{label, act(), active()}]`
+  vào đúng object đang `VIEWS.splice()` vào (xem "Báo cáo" làm mẫu, `reports.js`): mỗi mục con tự mang
+  `act()` (module tự set state/tab riêng của nó – vd `S.rp.tab`) + `active()` (trả `true/false` biết mục
+  con nào đang chọn, để tô đậm) – `renderNav()` (`core/ui.js`) chỉ GỌI 2 hàm này, không biết gì về state
+  riêng của module (đúng kiến trúc "không sửa lõi": cơ chế generic ở core, dữ liệu cụ thể ở module). Bấm
+  mục CHA chỉ xổ/đóng (`S.navOpen[v.id]`, không điều hướng, không có trang riêng) – tham khảo đúng kiểu
+  menu xổ thụt lề của 1 app khác theo yêu cầu người dùng ("chuyển 3 mục báo cáo sang dạng sổ xuống", thay
+  cho 3 tab ngang `.rp-tabs` cũ ở đầu trang). **Hạn chế đã biết**: sidebar thu gọn (`body.side-collapsed`,
+  chỉ còn icon) ẩn hẳn mục con (`.nav-sub`/`.nav-chev` display:none, `base.css`) vì không đủ chỗ hiện chữ –
+  chưa làm kiểu xổ nổi (flyout) khi thu gọn, để sau nếu được yêu cầu riêng.
+  **Bug đã gặp 1 lần (nhớ kỹ nếu thêm mục xổ khác)**: mục con dùng thuộc tính `hidden` để ẩn/hiện
+  (`<div class="nav-sub" ${open?"":"hidden"}>`), nhưng `.nav-sub{display:flex}` (CSS tác giả) tự ĐÈ LÊN mặc
+  định `[hidden]{display:none}` của trình duyệt (CSS tác giả luôn thắng CSS mặc định UA bất kể độ ưu tiên)
+  → mục con hiện ra, đóng lại không mất đi được ("Báo cáo đang không thu lại được"). Phải thêm riêng
+  `.nav-sub[hidden]{display:none}` mới đúng. Bất kỳ phần tử nào vừa đặt `display` qua CSS vừa dùng thuộc
+  tính `hidden` để ẩn/hiện đều cần ghi đè `[hidden]{display:none}` kiểu này, không tự suy ra được.
+  **Nút CHA không tô nền/thanh viền trái khi active nữa** (`.nav-grp-toggle.active`, `base.css`) – lúc đầu
+  tô y hệt `[aria-current="page"]` (nền đặc + thanh viền trái), nhưng mục CON đang chọn ngay bên dưới cũng
+  tô y hệt → nhìn như "2 thanh active" cùng lúc, rối mắt. Theo yêu cầu người dùng (đối chiếu lại ảnh tham
+  khảo 1 app khác): nút cha giờ CHỈ đổi màu chữ + icon (không nền, không viền trái) khi đang mở đúng nhóm
+  chứa trang hiện tại; "thanh" tô nền đặc CHỈ còn ở đúng 1 chỗ – mục con đang chọn thật
+  (`[aria-current="page"]`, kế thừa nguyên `.nav button` chung).
 - Muốn thêm mục menu ở vị trí cụ thể (không phải đầu/cuối danh sách chính): tự thao tác mảng `VIEWS` toàn
   cục sau khi `registerView`/gán trực tiếp (xem `reports.js`, `kpi.js` chèn ngay sau 1 mục có sẵn bằng
   `VIEWS.splice(VIEWS.findIndex(v=>v.id==="...")+1, 0, {...})`).
@@ -387,7 +449,64 @@ nút `+`/`✕` mỗi dòng (`ACTIONS["addcatrow"]`/`["delcatrow"]`) chèn/xoá n
   cách). **Đã chạy script chuyển đổi 1 lần** cho dữ liệu `projects` hiện có trong CSDL (P1→Cao, P2→Bình
   thường, P3/P4→Thấp) – dự án tạo/sửa từ nay luôn dùng đúng 3 chữ mới, không còn `t.pr` nào mang giá trị
   `P1`–`P4` nữa; nơi nào còn so sánh theo mã cũ là lỗi.
-- **Tham khảo `ptkt-appv1` cho "giao diện dự án"**: đã diff `plan.js`/`plan.css`/`project-overview.js` 2 bên
+- **CẬP NHẬT VỊ TRÍ – trang riêng "Tổng quan → bấm dự án" ĐÃ BỎ HẲN**: toàn bộ 3 đoạn tiếp theo (tham khảo
+  `ptkt-appv1`/thanh Kỳ/`ovDetailHeader()`, và `planDetail(p, extra)` mô tả `extra` falsy) mô tả trang đó
+  khi còn tồn tại – **giữ lại làm lịch sử**, nhưng từ nay **bấm 1 dự án ở tab "Tổng quan" nhảy thẳng sang
+  "Báo cáo → Báo cáo dự án"** (`data-act="goplan"`, `core/events.js` – đặt `S.view="reports"`,
+  `S.rp.tab="project"`, `S.rp.pjProject=<id>`, reset `S.rp.pjPtype="Tất cả"` để dự án vừa chọn không bị lọc
+  mất khỏi `<select>`), KHÔNG còn mở trang riêng nữa (theo yêu cầu người dùng). Vì vậy: `ovDetailHeader()`,
+  `S.ovDetailId`, `ACTIONS["ovback"]` **đã xoá hẳn** (không phải giữ lại, khác các hàm "giữ lại phòng khi
+  cần" khác trong file này); `planDetail(p, extra)` **chỉ còn 1 nơi gọi thật** – `planDetail(p, true)` ở
+  `planContent()` (tab "Kế hoạch dự án") – nhánh `extra` falsy (cột "Đánh giá", class `.plan-grid-report`
+  tiêu đề navy) vẫn còn trong code nhưng **không ai gọi tới nữa**, giữ lại phòng khi cần (không xoá, theo
+  đúng quy ước file này). 3 panel Tiến độ theo tuần/Đầu việc khẩn cấp/Mốc thanh toán đã dọn sang
+  `rpProjectContent()` (`reports.js`, xem mục "Gantt theo tuần" ở "Bộ công thức sheet Report" phía trên).
+  Bảng "Danh sách đầu việc" ngay trong `rpProjectContent()` cũng đổi tiêu đề từ xanh lá `.rp-sec-grn` sang
+  navy đậm `#1F4E78`/chữ trắng (lớp mới `.rp-sec-blue`, `reports.css`, đặt SAU `.rp-sec-grn thead th` để
+  thắng khi 1 phần tử mang cả 2 lớp) theo yêu cầu người dùng – **chỉ riêng bảng này**, 3 nơi khác còn dùng
+  `.rp-sec-grn` (Báo cáo tuần, Tải tuần, Báo cáo tổng hợp dự án) **giữ nguyên xanh lá**, đừng đổi màu
+  `.rp-sec-grn` gốc. Ô "Hạng mục" gộp dòng cũng đổi nền `var(--ok-soft)`→`var(--info-soft)` cho đồng bộ.
+  **CẬP NHẬT TIẾP – đã bỏ hẳn bảng `.rp-sec-blue` này** (chỉ tồn tại 1 thời gian ngắn): theo yêu cầu người
+  dùng "không phải bảng kiểu cũ của kỹ thuật nữa", bảng "Chi tiết thực hiện" đơn giản trong
+  `rpProjectContent()` **đổi hẳn sang gọi `planDetail(pr.p, false, true)`** (bản `extra` falsy – đúng bảng
+  đầy đủ 4 cặp ngày + cột "Đánh giá" + tiêu đề navy, trước đây hiện ở trang riêng "Tổng quan → bấm dự án"
+  nay đã bỏ) – đặt BÊN TRONG `#rp-print` (cùng khối với tiêu đề + dải KPI) để Xuất PDF (chụp đúng
+  `#rp-print`) tự khớp theo bảng mới, không cần sửa riêng.
+  **Tham số thứ 3 `noTools=true`** (`planDetail(p, extra, noTools)`, `plan.js`) – thêm sau khi người dùng
+  yêu cầu dọn 3 nút Tiến độ theo tuần/Đầu việc khẩn cấp/Mốc thanh toán LÊN thanh điều khiển chung (cùng
+  hàng chọn Loại/dự án + "← Quay lại tổng quan" + "Xuất báo cáo", biến `toolBtns` trong `rpProjectContent()`)
+  thay vì nằm trong toolbar riêng của `planDetail()` ngay trên bảng – `noTools=true` chỉ tắt việc VẼ LẠI 3
+  nút đó bên trong `planDetail()` (tránh lặp 2 chỗ), KHÔNG tắt 3 PANEL tương ứng (Tiến độ theo tuần/Đầu
+  việc khẩn cấp/Mốc thanh toán vẫn render `<section class="panel">` riêng ngay trên bảng chính như cũ –
+  đúng ý "hiển thị thành các bảng riêng"). Trạng thái đóng/mở dùng chung `S.planGanttOpen`/
+  `S.planUrgentOpen`/`S.planPayOpen` theo `p.id` nên nút đặt ở ĐÂU bấm cũng ra đúng panel, không cần đồng bộ
+  gì thêm. Lời gọi `planDetail(p, true)` ở `planContent()` (tab "Kế hoạch dự án") không đổi – `noTools`
+  chỉ có tác dụng khi `extra` falsy (nhánh "Xoá dự án"/"Sửa thông tin" của `extra=true` không liên quan).
+  **Bảng chính ẨN HẲN khi đang mở 1 trong 3 panel** (`anyPanelOpen = !extra && (ganttOpen||urgentOpen||
+  payOpen)`, `planDetail()`) – trước đó bảng chính + panel đang mở XẾP CHỒNG cùng lúc, chú thích màu Gantt
+  (`.plan-gantt-legend`) đứng sát ngay trên bảng chính nhìn như 1 khối, dễ hiểu lầm chú thích mô tả bảng
+  chính (theo phản hồi người dùng – "nó là riêng mà") – nay chỉ hiện ĐÚNG 1 trong 2: panel đang mở, hoặc
+  bảng chính khi cả 3 panel đều đóng. Chỉ áp dụng cho `extra` falsy (trang Báo cáo dự án) – tab "Kế hoạch
+  dự án" (`extra=true`) không có khái niệm 3 panel này, luôn hiện bảng chính bình thường. **Chú thích màu
+  Gantt chuyển lên ĐẦU `planGanttPanel()`** (trước ở cuối, dưới lưới tuần) – `.plan-gantt-legend` đổi
+  `margin-top:10px`→`margin-bottom:10px` (`plan.css`) cho khớp vị trí mới.
+  **CẬP NHẬT TIẾP – `rpBuildProjectExport()` đã viết lại khớp đúng bảng mới** (trước đó Xuất Excel còn ra
+  đúng cột kiểu cũ Hạng mục/Đầu việc/Chi tiết thực hiện/Deadline/Trạng thái/Vướng mắc/Hướng giải quyết, lệch
+  với bảng xem web/PDF – đã sửa theo yêu cầu người dùng "xuất báo cáo đúng chính xác các bảng này theo
+  excel và PDF"): sheet "Đầu việc" đọc thẳng `pr.p._tasks` (đúng nguồn `planDetail()` dùng, không qua
+  `pr.rows`/`rpBuildProject()` nữa) – cột khớp 1-1 với bảng web: No./Đầu việc/Trạng thái/Ưu tiên/Phụ trách/
+  Thời gian(ngày) Theo thực tế+Theo đề xuất/4 cặp Bắt đầu-Kết thúc (HĐ gốc/HĐ điều chỉnh/Dự kiến/Thực tế)/
+  Đánh giá. **`rpExportAssess(t)`** (hàm mới, `reports.js`) tính "Đánh giá" – LẶP LẠI đúng công thức đã viết
+  ở `planTaskRow()`/`planMsTable()` (`plan.js`: `diff=actEnd−deadline`, 0→"✓ Đúng hạn", âm→"✓ Sớm N ngày",
+  dương→"⚠ Trễ N ngày") vì `reports.js` không gọi hàm nội bộ của `plan.js` cho phần này (khác cách dùng
+  thẳng `planDetail()`/`planGanttPanel()`… ở trên) – **đổi công thức "Đánh giá" ở 1 nơi thì phải đổi luôn cả
+  2 nơi** (`plan.js` lẫn `rpExportAssess()` ở `reports.js`), không tự đồng bộ. PDF không cần sửa gì thêm
+  (đã tự khớp từ trước, chụp đúng DOM `#rp-print` đã chứa `planDetail(pr.p)`).
+  **Nút "← Quay lại tổng quan"** (trang `ovDetailHeader()` cũ có, bị mất khi bỏ trang đó) đã thêm lại ở
+  ngay thanh chọn dự án của `rpProjectContent()` (`reports.js`, cạnh nút "Xuất báo cáo") – dùng thẳng
+  `data-act="godash"` có sẵn (giống nút "Xem tất cả" ở Dashboard, `exec-dashboard.js`: `S.view="dash";
+  S.projTab="overview"`), không viết action riêng.
+- **Tham khảo `ptkt-appv1` cho "giao diện dự án"** *(lịch sử – xem ghi chú cập nhật vị trí ngay trên)*: đã diff `plan.js`/`plan.css`/`project-overview.js` 2 bên
   – khác nhau SÂU hơn màu sắc (ptkt dùng lại kiểu thẻ/card nhóm theo Loại ở Tổng quan dự án – đúng kiểu NGSI
   **đã bỏ** theo yêu cầu người dùng trước đó để đổi sang bảng sort được; bảng đầu việc chính của ptkt tái
   dùng thẳng style `.rp-sec-grn`/báo cáo thay vì `.plan-grid` khoá khung 2 cột + 4 cặp ngày của NGSI) – nên
@@ -420,6 +539,28 @@ nút `+`/`✕` mỗi dòng (`ACTIONS["addcatrow"]`/`["delcatrow"]`) chèn/xoá n
   dung bảng và thanh cuộn. Mọi selector dựa vào "ancestor cuộn gần nhất" (`.plan-grid thead{position:
   sticky}`, `.plan-no`/`.plan-dv{position:sticky; left:...}`) vẫn khớp đúng vì chỉ đổi *ancestor* cuộn từ
   `.tbl-wrap` sang `.plan-scroll`, không đổi cơ chế sticky.
+- **`planDetail(p, extra)`** (`plan.js`) *(mô tả cả nhánh `extra` falsy – nay không còn nơi gọi, xem ghi
+  chú cập nhật vị trí ở trên)* – cùng 1 bảng đầu việc dùng chung ở 2 đường vào khác nhau, nay
+  khác nhau về CỘT CUỐI BẢNG: `extra=true` (chỉ gọi từ tab "Kế hoạch dự án", `planContent()`) **THAY** cột
+  "Đánh giá" bằng 2 cột **Cảnh báo** (`warnPills(t.warns)`, `core/ui.js` – Quá hạn/Sắp đến hạn/Ma sát cao…,
+  rộng cố định `180px`) và **Note** (`t.note` – "Ghi chú của trưởng phòng", sửa qua `taskForm()`) – bỏ hẳn
+  "Đánh giá" ở đây vì trùng ý với "Cảnh báo" (chỉ hẹp hơn: so `actEnd`/`deadline`, trong khi Cảnh báo bao
+  quát hơn). `extra` để trống/`false` (gọi từ trang chi tiết 1 dự án mở ở tab "Tổng quan" –
+  `ovDetailHeader(p)+planDetail(p)`, `project-overview.js`) thì **giữ nguyên cột "Đánh giá"**, KHÔNG có
+  Cảnh báo/Note, giữ bảng gọn kiểu xem nhanh/báo cáo. Theo đúng yêu cầu người dùng: "Kế hoạch dự án" là
+  bảng làm việc đầy đủ, "Tổng quan → bấm dự án" là bảng xem nhanh. `PLAN_COLS` (hằng số cột cơ bản, gồm cả
+  "Đánh giá") cộng `+1` ngay trong `planDetail()` khi `extra` (16→17: bớt 1 "Đánh giá", thêm 2 Cảnh
+  báo/Note) để tính đúng `colspan` dòng rỗng. `planTreeRows(p,{cols,extra})` truyền `extra` xuống
+  `planTaskRow(t,i,lvl,p,extra)` – nơi nào tự viết `o.row` riêng (thay `planTaskRow` mặc định) mà không
+  cần cột cuối này thì cứ bỏ qua tham số thứ 5, không bắt buộc dùng.
+  **Màu tiêu đề bảng cũng tách theo `extra`** (`plan.css`): trang "Tổng quan → bấm dự án" (`extra` falsy)
+  nhận thêm class `.plan-grid-report` trên khung ngoài (`plan.js`) → tiêu đề đổi sang `#1F4E78` (xanh navy
+  đậm) nền/chữ trắng, đọc ĐÚNG bằng ExcelJS từ ô tiêu đề bảng "II. CÁC MỐC CHÍNH CỦA DỰ ÁN" ở sheet `Report`
+  của file mẫu thật `Bao cao trien khai LB.NGSI-Viettel_Lydk.xlsx` (`D:\Documents\Code Web\Data_PM\`, ngoài
+  repo) – **không phải** màu dải "CHÚ GIẢI GANTT" (xanh dương/tím/xanh lá/vàng/đỏ/cam) nằm phía trên bảng đó
+  trong cùng sheet, dễ nhầm nếu chỉ nhìn ảnh chụp màn hình thay vì đọc file thật (đã đọc lại bằng script
+  ExcelJS, không đoán theo mắt). Bảng "Kế hoạch dự án" (`extra=true`, không có class `.plan-grid-report`)
+  giữ nguyên tiêu đề xanh lá `#D7E8C7` kiểu lưới Excel như cũ, không đổi.
 - Bảng "Kế hoạch dự án" (`planTaskRow()`, `plan.js`), với ai sửa được dự án (`canManageProject(p)`): 3 nút
   chèn/xoá dòng **nổi đè lên** (`position:absolute`, class `.plan-rowacts`, `plan.css`) ngay trong ô "No."
   của dòng (tràn sang cả ô "Đầu việc" liền kề) – **KHÔNG phải 1 cột riêng** (đã thử thêm hẳn 1 cột trước đó
@@ -435,6 +576,12 @@ nút `+`/`✕` mỗi dòng (`ACTIONS["addcatrow"]`/`["delcatrow"]`) chèn/xoá n
   viết `o.row` riêng cũng cần nhận đủ 4 tham số. `td.plan-no` cần `overflow:visible` (ghi đè `overflow:hidden`
   chung của `.plan-grid td`) để phần nổi tràn sang không bị cắt, và tăng tạm `z-index` khi hover để đè lên
   `td.plan-dv` liền kề (2 ô cùng sticky `z-index:1`, đứng trước thì bị vẽ đè lên theo thứ tự DOM).
+  **CẬP NHẬT: `canAct` (biến quyết định có vẽ 3 nút này không) nay thêm điều kiện `extra &&`** – trước chỉ
+  check `canManageProject(p)`, nghĩa là ai có quyền sửa dự án vẫn thấy 3 nút chèn/xoá dòng dù đang ở trang
+  "Báo cáo dự án" (`planTaskRow(t,i,lvl,p,extra)` gọi từ `planDetail(pr.p,false,true)`, `reports.js` – xem
+  "Khung mẫu"/"Bộ công thức sheet Report" ở trên) – trang đó là xem/xuất báo cáo, không phải chỗ sửa dữ
+  liệu, theo phản hồi người dùng ("dù sao cũng không sửa được"). Giờ 3 nút chỉ hiện khi `extra=true` (tab
+  "Kế hoạch dự án"); muốn chèn/xoá dòng vẫn làm bình thường ở đúng tab đó.
 - Quyền phải kiểm tra ở **máy chủ** (`RULES`/`canWrite`), không chỉ ẩn nút.
 - Không đổi định dạng tài liệu đang có (`projects`, `weeks`, `config`) mà không viết bước chuyển đổi dữ liệu.
 - Không commit `.env`, `data/`, `node_modules/`.
@@ -452,7 +599,11 @@ nút `+`/`✕` mỗi dòng (`ACTIONS["addcatrow"]`/`["delcatrow"]`) chèn/xoá n
   `constants.js`, `events.js`, `server.js` của 2 dự án đã rẽ nhánh nghiệp vụ, không so để đồng bộ), và
   không đổi lại `<title>`/`.topbar-app` về "Technical Department". Lần sau muốn đồng bộ tiếp UI mới từ
   `ptkt-appv1`, diff riêng từng file CSS/HTML thuần hiển thị, không diff/chép các file đã rẽ nhánh nghiệp vụ
-  kể trên.
+  kể trên. **Đã rẽ nhánh khỏi bản gốc 1 chỗ sau lần đồng bộ**: bề rộng cột sidebar đổi `196px`→`224px`
+  (`.app`/`.side-head` ở `base.css`, + `max-width` nhãn menu `160px`→`188px`) để có chỗ cho mục menu xổ mục
+  con (`.nav-sub`, xem mục "Cách mở rộng" → "Mục menu trái xổ ra mục con") không bị vỡ chữ – **đừng** copy
+  đè lại đúng 196px từ `ptkt-appv1` nếu đồng bộ `base.css` tiếp, trừ khi `ptkt-appv1` cũng đã có nhu cầu
+  tương tự và đổi theo.
 - **Đồng bộ toàn bộ trang "Góp ý" từ `ptkt-appv1`** (lần này đồng bộ cả tính năng, không chỉ hiển thị,
   theo yêu cầu người dùng): `frontend/js/modules/feedback.js` nay có thêm (1) **Sửa góp ý** (chỉ người viết/
   admin hệ thống – trưởng phòng/phó phòng không còn sửa/xoá được góp ý người khác, chỉ còn đổi **trạng thái

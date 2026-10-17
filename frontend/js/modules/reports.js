@@ -202,20 +202,46 @@ function rpBuildProject(){
   }));
   return {empty:false, p, kind, anchor, P, stats, rows, risk};
 }
+/* Cột + dữ liệu sheet "Đầu việc" khớp ĐÚNG bảng xem trên web/PDF (planDetail(p), plan.js – No./Đầu việc/
+   Trạng thái/Ưu tiên/Phụ trách/Thời gian(ngày)/4 cặp ngày/Đánh giá), thay cho bảng "Chi tiết thực hiện"
+   kiểu cũ trước đây (đã bỏ khỏi màn hình, xem rpProjectContent()) – theo yêu cầu người dùng "xuất báo cáo
+   đúng chính xác các bảng này theo Excel và PDF". PDF tự khớp sẵn (chụp đúng DOM #rp-print, đã chứa
+   planDetail(p)); CHỈ Excel cần tự dựng lại cột/dữ liệu riêng (ExcelJS không đọc được DOM). "Đánh giá" –
+   so Thực tế với Kế hoạch theo HĐ gốc – dùng ĐÚNG công thức đã viết ở `planTaskRow()`/`planMsTable()`
+   (plan.js: diff=actEnd−deadline, 0→"✓ Đúng hạn", âm→"✓ Sớm N ngày", dương→"⚠ Trễ N ngày"), lặp lại ở đây
+   vì 2 module khác phạm vi (plan.js không phụ thuộc reports.js) – đổi công thức ở 1 nơi thì nhớ đổi luôn
+   chỗ kia. */
+function rpExportAssess(t){
+  if(!t.actEnd || !t.deadline) return "";
+  const diff = days(t.deadline, t.actEnd);
+  return diff===0 ? "✓ Đúng hạn" : diff<0 ? `✓ Sớm ${Math.abs(diff)} ngày` : `⚠ Trễ ${diff} ngày`;
+}
 function rpBuildProjectExport(){
   const pr = rpBuildProject();
   if(pr.empty) return {title:"Báo cáo dự án", scope:"Chưa chọn dự án", period:"", filename:"Bao-cao-du-an", sheets:[{name:"Đầu việc", cols:[], rows:[]}]};
   const colsSum = ["Chỉ số","Giá trị"], rowsSum = pr.stats.map(s=>({"Chỉ số":s.l, "Giá trị":String(s.v)}));
-  const cols = ["Hạng mục","Đầu việc","Chi tiết thực hiện","Deadline theo HĐ","Trạng thái thực hiện","Vướng mắc","Hướng giải quyết"];
-  const rows = pr.rows.map(t => ({"Hạng mục":t.phase, "Đầu việc":t.name, "Chi tiết thực hiện":t.detail,
-    "Deadline theo HĐ":t.deadline?dmy(t.deadline):"", "Trạng thái thực hiện":t.status||"", "Vướng mắc":t.issue, "Hướng giải quyết":t.solution}));
+  const d = x => x?dmy(x):"";
+  const cols = ["No.","Đầu việc","Trạng thái","Ưu tiên","Phụ trách",
+    "Theo thực tế","Theo đề xuất",
+    "HĐ gốc - Bắt đầu","HĐ gốc - Kết thúc","HĐ điều chỉnh - Bắt đầu","HĐ điều chỉnh - Kết thúc",
+    "Dự kiến - Bắt đầu","Dự kiến - Kết thúc","Thực tế - Bắt đầu","Thực tế - Kết thúc","Đánh giá"];
+  const taskRows = pr.p._tasks || [];
+  const rows = taskRows.map(t => ({
+    "No.":t.no||"", "Đầu việc":planShortName(t.dv), "Trạng thái":t.status||"", "Ưu tiên":t.pr||"", "Phụ trách":t.owner||"",
+    "Theo thực tế":t.daysActual??"", "Theo đề xuất":t.daysProposed??"",
+    "HĐ gốc - Bắt đầu":d(t.hdStart), "HĐ gốc - Kết thúc":d(t.deadline),
+    "HĐ điều chỉnh - Bắt đầu":d(t.adjStart), "HĐ điều chỉnh - Kết thúc":d(t.adjEnd),
+    "Dự kiến - Bắt đầu":d(t.expStart), "Dự kiến - Kết thúc":d(t.expEnd),
+    "Thực tế - Bắt đầu":d(t.actStart), "Thực tế - Kết thúc":d(t.actEnd),
+    "Đánh giá":rpExportAssess(t)
+  }));
   const title = `Báo cáo dự án – ${pr.p.name} – ${pr.P.label}`;
   return {
     title, scope:`${pr.p.name} (${pr.p.type})`,
     period:rpRangeText(pr), filename:slug(title),
     sheets:[
       {name:"Tổng quan", cols:colsSum.map(h=>({header:h,key:h})), rows:rowsSum},
-      {name:"Đầu việc", cols:cols.map(h=>({header:h,key:h})), rows, merges:[{col:0, keys:["phase"]}], rawRows:pr.rows}
+      {name:"Đầu việc", cols:cols.map(h=>({header:h,key:h})), rows}
     ]
   };
 }
@@ -647,41 +673,49 @@ function rpProjectToolbar(pr){
     <button class="btn icon" data-act="exrefresh" title="Làm mới" aria-label="Làm mới">${ICONS.refresh}</button>`;
 }
 function rpProjectContent(pr){
-  const canExport = !pr.empty && pr.rows.length && !S.rp.busy;
-  let h = `<section class="panel" style="margin-bottom:14px; overflow:visible"><div class="panel-b" style="display:flex; align-items:center; gap:14px">
+  const canExport = !pr.empty && (pr.p._tasks||[]).length && !S.rp.busy;
+  /* 3 nút Tiến độ theo tuần/Đầu việc khẩn cấp/Mốc thanh toán dọn LÊN thanh điều khiển chung (cùng hàng
+     chọn Loại/dự án + "← Quay lại tổng quan" + "Xuất báo cáo") theo yêu cầu người dùng, thay vì nằm trong
+     toolbar riêng của bảng bên dưới (xem `planDetail(p, extra, noTools)` – gọi với `noTools=true` ở dưới
+     để KHÔNG vẽ lại 3 nút đó lần 2). Chỉ hiện khi đã chọn dự án (`!pr.empty`, cần `pr.p.id`); state đóng/mở
+     vẫn dùng chung `S.planGanttOpen`/`S.planUrgentOpen`/`S.planPayOpen` nên bấm ở đây vẫn ra đúng panel. */
+  const ganttOpen = !pr.empty && !!(S.planGanttOpen && S.planGanttOpen[pr.p.id]);
+  const urgentOpen = !pr.empty && !!(S.planUrgentOpen && S.planUrgentOpen[pr.p.id]);
+  const payOpen = !pr.empty && !!(S.planPayOpen && S.planPayOpen[pr.p.id]);
+  const toolBtns = pr.empty ? "" : `
+    <button class="btn${ganttOpen?" primary":""}" data-act="plangantt" data-id="${esc(pr.p.id)}" aria-pressed="${ganttOpen}">Tiến độ theo tuần</button>
+    <button class="btn${urgentOpen?" primary":""}" data-act="planurgent" data-id="${esc(pr.p.id)}" aria-pressed="${urgentOpen}">Đầu việc khẩn cấp</button>
+    <button class="btn${payOpen?" primary":""}" data-act="planpay" data-id="${esc(pr.p.id)}" aria-pressed="${payOpen}">Mốc thanh toán</button>`;
+  let h = `<section class="panel" style="margin-bottom:14px; overflow:visible"><div class="panel-b" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap">
     <div style="display:flex; align-items:center; gap:14px; flex:1; min-width:0; overflow-x:auto; padding:2px">
       <select class="inp" data-act="rppjptype" style="flex:none; width:auto; min-width:150px">${PLAN_FILTERS.map(pf=>`<option value="${esc(pf.key)}" ${pf.key===S.rp.pjPtype?"selected":""}>${esc(pf.label)}</option>`).join("")}</select>
       <select class="inp" data-act="rppjproj" style="flex:none; width:auto; min-width:220px">${rpProjOptions(false, S.rp.pjProject, S.rp.pjPtype)}</select>
+      ${toolBtns}
     </div>
-    <div style="flex:none">${rpExportBtnHtml(canExport)}</div>
+    <div style="flex:none; display:flex; gap:10px">
+      <button class="btn" data-act="godash">← Quay lại tổng quan</button>
+      ${rpExportBtnHtml(canExport)}
+    </div>
   </div></section>`;
   if(pr.empty) return h + `<section class="panel"><div class="panel-b"><div class="empty"><b>Chưa chọn dự án</b>Chọn một dự án ở trên để xem báo cáo.</div></div></section>`;
+  /* Bảng "Chi tiết thực hiện" đơn giản kiểu cũ (Hạng mục/Đầu việc/Chi tiết thực hiện/Deadline/Trạng thái/
+     Vướng mắc/Hướng giải quyết, màu .rp-sec-blue) ĐÃ BỎ HẲN theo yêu cầu người dùng ("không phải bảng kiểu
+     cũ của kỹ thuật nữa") – thay bằng ĐÚNG bảng đầy đủ 4 cặp ngày + cột "Đánh giá" + tiêu đề navy của
+     `planDetail(p)` (bản `extra` falsy, trước đây hiện ở trang riêng "Tổng quan → bấm dự án" nay đã bỏ,
+     xem project-overview.js/events.js) – dùng lại NGUYÊN hàm đó (kèm sẵn panel Tiến độ theo tuần/Đầu việc
+     khẩn cấp/Mốc thanh toán + zoom bảng, không cần tự dựng lại), chỉ gọi thẳng `planDetail(pr.p, false,
+     true)` ở đây (plan.js nạp trước reports.js trong index.html nên gọi thẳng được) – tham số thứ 3
+     `noTools=true` để planDetail() không vẽ lại 3 nút đã dọn lên thanh điều khiển ở trên (xem toolBtns).
+     `rpBuildProjectExport()` (Xuất Excel) đã viết lại riêng để khớp đúng cột/dữ liệu bảng mới này (xem hàm
+     đó, đọc thẳng `pr.p._tasks` thay vì `pr.rows` kiểu cũ) – PDF tự khớp sẵn (chụp DOM #rp-print, đã chứa
+     `planDetail(pr.p)` nên không cần sửa riêng). */
   h += `<section class="panel" id="rp-print"><div class="panel-b">
     <div style="text-align:center; margin-bottom:18px">
       <div style="font-size:18px; font-weight:800; letter-spacing:.01em">BÁO CÁO DỰ ÁN – ${esc(pr.p.name.toUpperCase())} – ${esc(pr.P.label.toUpperCase())}</div>
       <div class="small muted" style="margin-top:4px">${esc(pr.p.type)}${pr.p.owner?" · TM: "+esc(pr.p.owner):""} · ${esc(rpRangeText(pr))} · lập ngày ${dmy(todayISO())}</div>
     </div>
     <div class="band" style="margin-bottom:20px">${pr.stats.map(s=>`<div class="stat ${s.bad?"bad":""}"><div class="v">${esc(String(s.v))}</div><div class="l">${esc(s.l)}</div></div>`).join("")}</div>
-    <div class="rp-sec rp-sec-grn">
-      <div class="tbl-wrap"><table style="table-layout:fixed"><thead><tr>
-        <th style="width:11%">Hạng mục</th><th style="width:16%">Đầu việc</th><th style="width:24%">Chi tiết thực hiện</th>
-        <th style="width:11%">Deadline theo HĐ</th><th style="width:12%">Trạng thái thực hiện</th><th style="width:13%">Vướng mắc</th><th style="width:13%">Hướng giải quyết</th>
-      </tr></thead>
-      <tbody>${pr.rows.length ? pr.rows.map((t,i)=>{
-        /* Gộp ô (rowspan) cột Hạng mục cho các dòng liền nhau cùng hạng mục, giống bảng mẫu Excel –
-           pr.rows đã sắp theo đúng thứ tự hạng mục ở rpBuildProject() nên chỉ cần so dòng liền trước. */
-        const sameAsPrev = i>0 && pr.rows[i-1].phase===t.phase;
-        let span = 0;
-        if(!sameAsPrev){ span = 1; while(i+span<pr.rows.length && pr.rows[i+span].phase===t.phase) span++; }
-        return `<tr>
-        ${sameAsPrev ? "" : `<td class="cell-main" rowspan="${span}" style="vertical-align:top; background:var(--ok-soft)">${esc(t.phase)}</td>`}
-        <td class="cell-main" style="vertical-align:top">${esc(t.name)}</td>
-        <td class="small" style="white-space:pre-wrap; vertical-align:top">${t.detail?esc(t.detail):'<span class="muted">–</span>'}</td>
-        <td style="vertical-align:top">${t.deadline?dmy(t.deadline):"–"}</td>
-        <td style="vertical-align:top">${t.status?stPill(t.status):"–"}</td>
-        <td class="small" style="white-space:pre-wrap; vertical-align:top">${t.issue?esc(t.issue):'<span class="muted">–</span>'}</td>
-        <td class="small" style="white-space:pre-wrap; vertical-align:top">${t.solution?esc(t.solution):'<span class="muted">–</span>'}</td></tr>`;
-      }).join("") : `<tr><td colspan="7" class="muted" style="padding:14px">Dự án chưa có đầu việc nào.</td></tr>`}</tbody></table></div></div>
+    ${planDetail(pr.p, false, true)}
   </div></section>`;
   return h;
 }
@@ -693,16 +727,15 @@ function viewReports(){
   if(S.rp.tab==="project"){ const pr = rpBuildProject(); toolbar = rpProjectToolbar(pr); content = rpProjectContent(pr); }
   else if(S.rp.tab==="overview"){ const ov = rpBuildOverview(); toolbar = rpOverviewToolbar(ov); content = rpOverviewContent(ov); }
   else { const report = rpBuildWeek(); toolbar = rpWeekToolbar(report); content = rpWeekContent(report); }
-  let h = `<div class="head"><div><h1>Báo cáo</h1></div><div class="head-ctl">${toolbar}</div></div>`;
-  h += `<div class="rp-tabs" role="tablist">
-    <button type="button" role="tab" data-act="rptab" data-tab="week" aria-selected="${S.rp.tab==="week"}">Báo cáo tuần</button>
-    <button type="button" role="tab" data-act="rptab" data-tab="project" aria-selected="${S.rp.tab==="project"}">Báo cáo dự án</button>
-    <button type="button" role="tab" data-act="rptab" data-tab="overview" aria-selected="${S.rp.tab==="overview"}">Báo cáo tổng hợp dự án</button>
-  </div>`;
+  /* 3 "tab" trước đây nằm ngang ở đầu trang (rp-tabs) – đã chuyển thành 3 mục con xổ ra ở menu trái (xem
+     VIEWS.splice bên dưới, renderNav() ở core/ui.js), theo yêu cầu người dùng kiểu menu "xổ xuống" thay vì
+     tab ngang. Tiêu đề trang đổi theo đúng mục con đang chọn để biết đang xem báo cáo nào (trước đây luôn
+     cố định "Báo cáo" chung chung). */
+  const RP_TAB_LABEL = {week:"Báo cáo tuần", project:"Báo cáo dự án", overview:"Báo cáo tổng hợp dự án"};
+  let h = `<div class="head"><div><h1>${esc(RP_TAB_LABEL[S.rp.tab]||"Báo cáo")}</h1></div><div class="head-ctl">${toolbar}</div></div>`;
   h += content;
   return h;
 }
-ACTIONS["rptab"] = el => { S.rp.tab = el.dataset.tab; S.rp.exportOpen = false; render(); };
 ACTIONS["rppjkind"] = el => { S.rp.pjKind = el.dataset.k; render(); };
 ACTIONS["rppjnav"] = el => { S.rp.pjAnchor = shiftAnchor(S.rp.pjAnchor||S.week, S.rp.pjKind||"week", +el.dataset.d); render(); };
 ACTIONS["rpwkview"] = el => { S.rp.wkView = el.dataset.v; render(); };
@@ -749,7 +782,21 @@ document.addEventListener("click", e => {
 });
 VIEW_RENDER.reports = viewReports;
 ICONS.reports = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/><path d="m15 15 2 2 3-4" stroke="var(--teal)"/></svg>';
+/* "Báo cáo" đổi từ 1 mục đơn (trang riêng có 3 tab ngang .rp-tabs) sang 1 nhóm menu TRÁI xổ ra 3 mục con
+   (renderNav(), core/ui.js – cơ chế `children` mới, generic, không riêng cho reports.js) theo yêu cầu
+   người dùng ("chuyển 3 mục này sang dạng sổ xuống", tham khảo kiểu menu trái có mũi tên xổ mục con thụt lề
+   của 1 app khác). Mỗi mục con tự mang `act()` (đặt S.rp.tab đúng tab, tắt export đang mở) + `active()`
+   (biết mục nào đang được chọn để tô đậm) – core/ui.js chỉ gọi 2 hàm này, không biết gì về S.rp. */
 {
   const i = VIEWS.findIndex(v=>v.id==="dash");
-  VIEWS.splice(i+1, 0, {id:"reports", label:"Báo cáo", icon:"reports"});
+  const rpChild = (tab, label) => ({
+    label,
+    act: () => { (S.rp = S.rp||{}).tab = tab; S.rp.exportOpen = false; },
+    active: () => S.view==="reports" && S.rp && S.rp.tab===tab,
+  });
+  VIEWS.splice(i+1, 0, {id:"reports", label:"Báo cáo", icon:"reports", children:[
+    rpChild("week", "Báo cáo tuần"),
+    rpChild("project", "Báo cáo dự án"),
+    rpChild("overview", "Báo cáo tổng hợp dự án"),
+  ]});
 }

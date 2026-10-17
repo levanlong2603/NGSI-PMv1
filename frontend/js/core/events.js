@@ -14,8 +14,19 @@ main.addEventListener("click", e => {
   if(a==="godash"){ S.view="dash"; S.projTab="overview"; store("view","dash"); render(); return; }
   if(a==="wk"){ const d=+t.dataset.d; S.week = d===0 ? mondayOf(todayISO()) : addDays(S.week, d); render(); }
   else if(a==="tf"){ S.typeFilter=t.dataset.t; render(); }
-  else if(a==="goplan"){ S.planSel=t.dataset.id; S.ovDetailId=t.dataset.id; S.view="dash"; S.projTab="overview"; store("view","dash"); render(); }
-  else if(a==="ovback"){ S.ovDetailId=null; render(); }
+  /* Bấm 1 dự án ở tab "Tổng quan" KHÔNG còn mở trang riêng (ovDetailHeader()+planDetail(p), đã bỏ hẳn theo
+     yêu cầu người dùng) – nhảy thẳng sang Báo cáo → "Báo cáo dự án" (S.view/S.rp.tab), tự chọn sẵn đúng dự
+     án đó (S.rp.pjProject). Tự dựng đủ S.rp lần đầu (nếu rpInit() – reports.js – chưa chạy lần nào, tức
+     đây là điều hướng đầu tiên trong phiên) để không bị rpInit() ghi đè lại pjProject do `if(!S.rp)`. */
+  else if(a==="goplan"){
+    S.rp = S.rp || {pjKind:"week", pjAnchor:S.week};
+    /* pjPtype luôn trả về "Tất cả" khi nhảy từ Tổng quan – nếu đang lọc dở 1 Loại dự án khác (vd "Thầu")
+       mà dự án vừa bấm thuộc loại khác, dự án đó sẽ bị LỌC MẤT khỏi options của <select> (rpProjOptions()),
+       khiến ô chọn hiện trống dù S.rp.pjProject vẫn đúng id (báo cáo vẫn hiện đúng, chỉ riêng cái <select>
+       nhìn sai) – đặt lại "Tất cả" để luôn thấy đúng dự án vừa chọn trong danh sách. */
+    S.rp.tab = "project"; S.rp.pjProject = t.dataset.id; S.rp.pjPtype = "Tất cả"; S.rp.exportOpen = false;
+    S.view = "reports"; store("view", "reports"); render();
+  }
   else if(a==="addentry") entryForm(null);
   else if(a==="editentry"){ const person=t.dataset.person||S.me; const doc=weekDoc(S.week,person); const en=doc&&(doc.entries||[]).find(x=>x.id===t.dataset.id); if(en) entryForm(en, person); }
   else if(a==="copyprev") copyPrev();

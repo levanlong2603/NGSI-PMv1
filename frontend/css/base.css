@@ -18,7 +18,7 @@ button,input,select,textarea{font:inherit; color:inherit}
 *::-webkit-scrollbar-track{background:transparent}
 *::-webkit-scrollbar-thumb{background:var(--line); border-radius:3px}
 *::-webkit-scrollbar-thumb:hover{background:var(--ink-3)}
-.app{display:grid; grid-template-columns:196px minmax(0,1fr); height:calc(100% - var(--header-h)); margin-top:var(--header-h); transition:grid-template-columns .15s ease}
+.app{display:grid; grid-template-columns:224px minmax(0,1fr); height:calc(100% - var(--header-h)); margin-top:var(--header-h); transition:grid-template-columns .15s ease}
 @media (min-width:861px){ body.side-collapsed .app{grid-template-columns:60px minmax(0,1fr)} }
 main,.page,.stack,.grid2>*,.split>*,.prow,.prow>*,.lrow,.lrow>*,.me-sum>*,.toolbar>*{min-width:0}
 /* ---------- topbar (header cố định) ---------- */
@@ -60,8 +60,8 @@ main,.page,.stack,.grid2>*,.split>*,.prow,.prow>*,.lrow,.lrow>*,.me-sum>*,.toolb
 .side{background:var(--side); color:var(--side-ink); display:flex; flex-direction:column; padding:14px 10px 16px; position:sticky; top:var(--header-h); height:calc(100vh - var(--header-h)); overflow:auto; border-right:1px solid var(--side-line); transition:width .15s ease}
 /* Đặt đè lên hàng của nhãn nhóm đầu tiên (.nav-grp:first-child) thay vì chiếm riêng 1 hàng phía trên */
 /* Nút thu gọn/mở rộng = nút TRÒN nổi, luôn nằm đúng lề phải của sidebar (tâm nút nằm trên đường viền; kiểu S-Link).
-   position:fixed để không bị overflow của .side cắt; left bám theo bề rộng cột menu (196px / 60px khi thu gọn). */
-.side-head{position:fixed; top:calc(var(--header-h) + 14px); left:calc(196px - 14px); z-index:6; transition:left .15s ease}
+   position:fixed để không bị overflow của .side cắt; left bám theo bề rộng cột menu (224px / 60px khi thu gọn). */
+.side-head{position:fixed; top:calc(var(--header-h) + 14px); left:calc(224px - 14px); z-index:6; transition:left .15s ease}
 body.side-collapsed .side-head{left:calc(60px - 14px)}
 .side-toggle{all:unset; cursor:pointer; box-sizing:border-box; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center;
   background:var(--surface); color:var(--ink-2); border:1px solid var(--line); box-shadow:0 2px 8px rgba(10,18,28,.18); flex:none}
@@ -106,7 +106,7 @@ body.side-collapsed .nav-grp .ab{display:inline}
 .nav{display:flex; flex-direction:column; gap:1px}
 .nav button{all:unset; cursor:pointer; display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:8px; font-size:14px; color:var(--side-ink); border-left:3px solid transparent; transition:padding .15s ease, gap .15s ease}
 .nav button:hover{background:var(--side-hover-bg); color:var(--side-hover-ink)}
-.nav button span:not(.nav-badge){overflow:hidden; white-space:nowrap; text-overflow:ellipsis; opacity:1; max-width:160px; transition:opacity .1s ease, max-width .15s ease}
+.nav button span:not(.nav-badge){overflow:hidden; white-space:nowrap; text-overflow:ellipsis; opacity:1; max-width:188px; transition:opacity .1s ease, max-width .15s ease}
 body.side-collapsed .nav button span:not(.nav-badge){opacity:0; max-width:0}
 .nav button[aria-current="page"]{background:var(--side-active-bg); color:var(--side-active-ink); font-weight:600; border-left-color:var(--side-active-bar)}
 .nav button:focus-visible{outline:2px solid var(--focus)}
@@ -114,6 +114,25 @@ body.side-collapsed .nav button span:not(.nav-badge){opacity:0; max-width:0}
 .nav button:hover svg{color:var(--side-hover-ink)}
 .nav button[aria-current="page"] svg{color:var(--side-active-ink)}
 .nav-badge{margin-left:auto; background:var(--bad); color:#fff; font-size:10.5px; font-weight:700; line-height:1; border-radius:999px; padding:3px 6px; flex:none}
+/* Mục menu xổ mục con (renderNav(), core/ui.js – "Báo cáo" là mục đầu tiên dùng cơ chế này). Nút cha dùng
+   lại nguyên style `.nav button` (áp dụng sẵn vì là descendant selector), chỉ thêm mũi tên xoay. Nút cha
+   KHÔNG tô nền đặc/thanh viền trái như mục đang chọn thật (dù đang đứng ở 1 trang con nào đó) – từng tô
+   full như `[aria-current="page"]`, nhưng trùng với đúng mục con cũng đang tô y hệt ngay bên dưới, nhìn
+   như "2 thanh active" cùng lúc. Theo yêu cầu người dùng (tham khảo 1 app khác): CHỈ ĐÚNG 1 chỗ đang đứng
+   mới có thanh/nền đặc – nút cha chỉ đổi màu CHỮ + icon nhẹ (không nền, không viền trái) để biết đang mở
+   đúng nhóm, còn "thanh" thật sự chỉ nằm ở mục con đang chọn (`[aria-current="page"]` kế thừa từ
+   `.nav button` chung, không cần viết lại). */
+.nav-chev{margin-left:auto; width:14px !important; height:14px !important; transition:transform .15s ease}
+.nav-grp-toggle[aria-expanded="true"] .nav-chev{transform:rotate(180deg)}
+.nav-grp-toggle.active{color:var(--side-active-ink); font-weight:600}
+.nav-grp-toggle.active svg:not(.nav-chev){color:var(--side-active-ink)}
+/* .nav-sub{display:flex} tự ĐÈ LÊN mặc định [hidden]{display:none} của trình duyệt (CSS tác giả luôn thắng
+   CSS mặc định UA, bất kể độ ưu tiên) – thiếu dòng [hidden] riêng bên dưới thì mục con KHÔNG BAO GIỜ thu
+   lại được dù renderNav() đã gắn đúng thuộc tính `hidden` khi đóng (đã gặp đúng bug này, xem CLAUDE.md). */
+.nav-sub{display:flex; flex-direction:column; gap:1px; padding-right:8px}
+.nav-sub[hidden]{display:none}
+.nav-sub button{padding-left:44px; font-size:13px}
+body.side-collapsed .nav-sub,body.side-collapsed .nav-chev{display:none}
 .side-foot{margin-top:auto; padding:14px 10px 0; border-top:1px solid var(--side-line); font-size:12.5px}
 .side-foot label{display:block; margin-bottom:6px; color:var(--side-grp-ink)}
 .side-foot select{width:100%; background:rgba(255,255,255,.08); border:1px solid var(--side-line); border-radius:7px; padding:7px 8px; color:#fff}

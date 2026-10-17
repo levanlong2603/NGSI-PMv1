@@ -7,21 +7,12 @@
    S.planQuery/S.me cho Kế hoạch – xem plan.js) – gộp giao diện, không gộp cơ chế lọc dữ liệu. */
 function viewProject(){
   S.projTab = S.projTab || "overview";
-  /* Bấm vào 1 dự án ở tab "Tổng quan" (data-act="goplan", core/events.js) KHÔNG còn nhảy sang tab "Kế
-     hoạch dự án" nữa (theo yêu cầu người dùng) – thay vào đó hiện hẳn 1 trang riêng cho đúng dự án đó
-     (ovDetailHeader() + planDetail(), không có 2 tab/thanh công cụ chung ở trên), có nút "Quay lại tổng
-     quan" (ACTIONS["ovback"]) để trở về. Dự án bị xoá trong lúc đang xem (vd do người khác xoá) thì tự rơi
-     về lại Tổng quan bình thường thay vì trang trắng. */
-  if(S.projTab==="overview" && S.ovDetailId){
-    const p = M.pById.get(S.ovDetailId);
-    /* Thanh Kỳ (‹ Tuần… › + Tuần/Tháng/Quý + Tổng thể/Cá nhân + làm mới, dashToolbar()) ở ngay hàng tiêu đề
-       "Dự án" – tham khảo trang chi tiết dự án của ptkt-appv1 (projectPage()), chỉ lấy đúng chi tiết trực
-       quan này, KHÔNG lấy cả cấu trúc/ô "SE" (web này đã bỏ SE, xem CLAUDE.md). Trang chưa dùng S.week/
-       S.period để lọc gì ở đây (như dashContent() cũng ghi chú tương tự) – chỉ để đổi kỳ không mất chỗ khi
-       đang xem 1 dự án, đồng bộ với Dashboard/tab Tổng quan. */
-    if(p) return `<div class="head"><div><h1>Dự án</h1></div><div class="ex-ctl">${dashToolbar()}</div></div>` + ovDetailHeader(p) + planDetail(p);
-    S.ovDetailId = null;
-  }
+  /* Bấm vào 1 dự án ở tab "Tổng quan" (data-act="goplan", core/events.js) KHÔNG còn mở trang riêng của
+     dự án đó tại đây nữa – đã bỏ hẳn (ovDetailHeader() + planDetail(p) không extra, cùng S.ovDetailId/
+     ACTIONS["ovback"]) theo yêu cầu người dùng, chuyển hẳn sang Báo cáo → "Báo cáo dự án" (tự chọn sẵn
+     đúng dự án, xem events.js) – đó mới là nơi xem nhanh/báo cáo 1 dự án từ nay, gồm cả 3 nút "Tiến độ
+     theo tuần"/"Đầu việc khẩn cấp"/"Mốc thanh toán" (dọn từ trang cũ sang, xem rpProjectContent() ở
+     reports.js, vẫn dùng lại nguyên planGanttPanel()/planUrgentPanel()/planPaymentPanel() ở plan.js). */
   const toolbar = S.projTab==="plan" ? planToolbar() : dashToolbar();
   let h = `<div class="head"><div><h1>Dự án</h1></div><div class="ex-ctl">${toolbar}</div></div>`;
   h += `<div class="rp-tabs" role="tablist">
@@ -32,21 +23,6 @@ function viewProject(){
   return h;
 }
 ACTIONS["projtab"] = el => { S.projTab = el.dataset.t; render(); };
-/* Thanh tóm tắt đầu trang riêng của 1 dự án (Dự án/Phụ trách/Tiến độ/Mốc tiếp theo + dải hạng mục +
-   cảnh báo quá hạn/sắp hạn), cùng kiểu nhãn nhỏ/giá trị đậm với trang chi tiết nhân sự ở KPI & Năng lực
-   (me-sum me-sum-end, kpi.js) – không có "SE" (web này không còn khái niệm đó, xem CLAUDE.md). */
-function ovDetailHeader(p){
-  const cell = (label, val) => `<div><div class="small muted">${label}</div><div style="font-weight:700; font-size:16px">${val}</div></div>`;
-  return `<section class="panel" style="margin-bottom:12px"><div class="panel-b me-sum me-sum-end">
-    ${cell("Dự án", typeDot(p.type)+esc(p.name))}
-    ${cell("Phụ trách", esc(p.pm||p.owner||"–"))}
-    ${cell("Tiến độ", pct(p._prog))}
-    ${cell("Mốc tiếp theo", p._next?dmy(p._next):"–")}
-    <div class="strip-cell">${strip(p, "plan", "planSel")}</div>
-    <div class="badges">${p._late?`<span class="pill bad">${p._late} quá hạn</span>`:""}${p._stuck?`<span class="pill warn">${p._stuck} vướng</span>`:""}${p._soon?`<span class="pill info">${p._soon} sắp hạn</span>`:""}</div>
-    <div class="toolbar" style="margin-left:auto"><button class="btn" data-act="ovback">← Quay lại tổng quan</button></div>
-  </div></section>`;
-}
 /* Thanh điều khiển giống hệt Dashboard (ô kỳ + Tuần/Tháng/Quý + Tổng thể/Cá nhân + làm mới) – tab này
    chưa dùng kỳ để lọc gì, chỉ thêm sẵn cho đồng bộ giao diện, dùng chung S.week/S.period/periodInfo()/
    exnav/exper (exec-dashboard.js, events.js) với Dashboard nên đổi kỳ ở đâu cũng khớp nơi khác. */
