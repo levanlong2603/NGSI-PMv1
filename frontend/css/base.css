@@ -251,6 +251,16 @@ textarea.inp{min-height:74px; resize:vertical}
 .seg-in{display:flex; flex-wrap:wrap; gap:5px}
 .seg-in button{border:1px solid var(--line); background:var(--surface); border-radius:7px; padding:6px 11px; cursor:pointer; font-size:13px; min-width:36px}
 .seg-in button[aria-pressed="true"]{background:var(--teal-hover); border-color:var(--teal-hover); color:#fff}
+/* Ô "search" trong openForm() (core/ui.js) – gõ để lọc trong danh sách lựa chọn dài (vd "Đầu việc" ở Nhập
+   theo tuần, weekly-input.js), thay cho <select> khi danh sách quá dài khó cuộn tìm. Dropdown cao tối đa
+   240px (tự cuộn riêng nếu còn nhiều kết quả) thay vì cố thoát ra ngoài khung form – form trong .drawer-b
+   vốn đã cuộn được (base.css), input luôn tự cuộn vào khung nhìn khi focus nên dropdown ngay dưới nó cũng
+   theo luôn, không cần định vị kiểu "thoát khung" phức tạp như các menu nổi khác trong app. */
+.search-field{position:relative}
+.search-dd{position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:5; max-height:240px; overflow:auto; background:var(--surface); border:1px solid var(--line); border-radius:8px; box-shadow:0 10px 30px rgba(20,30,45,.12); padding:4px}
+.search-dd button{all:unset; display:block; width:100%; box-sizing:border-box; padding:7px 9px; border-radius:6px; cursor:pointer; font-size:13.5px; color:var(--ink)}
+.search-dd button:hover,.search-dd button:focus-visible{background:var(--hover)}
+.search-dd-empty{padding:10px 9px; color:var(--ink-3); font-size:13px}
 .row2{display:grid; grid-template-columns:1fr 1fr; gap:12px}
 .toast{position:fixed; left:50%; bottom:calc(20px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); background:var(--ink); color:var(--surface); padding:9px 16px; border-radius:9px; font-size:13.5px; z-index:40; box-shadow:0 6px 20px rgba(0,0,0,.2)}
 .empty{padding:34px 18px; text-align:center; color:var(--ink-3)}

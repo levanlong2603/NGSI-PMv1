@@ -18,11 +18,46 @@ function viewSettings(){
     </div></section>`;
   h += `<section class="panel" style="margin-bottom:18px"><div class="panel-h"><h2>Nhân sự & capacity</h2>${ro?"":'<button class="btn primary" data-act="addstaff">+ Nhân sự</button>'}</div>
     <div class="tbl-wrap"><table style="table-layout:fixed"><thead><tr><th style="width:24%">Họ tên</th><th style="width:13%; text-align:center">Giờ / tuần</th><th style="width:15%; text-align:center">% trừ họp, phát sinh</th><th style="width:14%; text-align:center">Kinh nghiệm (năm)</th><th style="width:16%; text-align:center">Hệ số năng lực</th><th style="width:18%; text-align:center">Capacity (điểm/tuần)</th></tr></thead><tbody>
-    ${M.staff.map((s,i)=>`<tr class="${ro?"":"click"}" data-act="${ro?"":"editstaff"}" data-i="${i}" tabindex="0"><td class="cell-main">${esc(s.name)}${s.title?`<div class="small muted">${esc(s.title)}</div>`:""}</td><td style="text-align:center">${s.hours}</td><td style="text-align:center">${Math.round(s.pct*100)}%</td><td style="text-align:center">${s.years||"–"}</td><td style="text-align:center">${fmt1(s.factor)}</td><td style="text-align:center; font-weight:600">${fmt1(s.cap)}</td></tr>`).join("")||'<tr><td colspan="6" class="muted">Chưa có nhân sự.</td></tr>'}
+    ${M.staff.map((s,i)=>`<tr class="${ro?"":"click"}" data-act="${ro?"":"editstaff"}" data-i="${i}" tabindex="0"><td class="cell-main">${esc(s.name)}${s.alias?` <span class="pill mute" title="Tên viết tắt dùng trong dự án">${esc(s.alias)}</span>`:""}${s.title?`<div class="small muted">${esc(s.title)}</div>`:""}</td><td style="text-align:center">${s.hours}</td><td style="text-align:center">${Math.round(s.pct*100)}%</td><td style="text-align:center">${s.years||"–"}</td><td style="text-align:center">${fmt1(s.factor)}</td><td style="text-align:center; font-weight:600">${fmt1(s.cap)}</td></tr>`).join("")||'<tr><td colspan="6" class="muted">Chưa có nhân sự.</td></tr>'}
     </tbody></table></div><div class="panel-b small muted">Capacity = Giờ/tuần × (1 − % họp, phát sinh) × Hệ số năng lực. Hệ số năng lực theo kinh nghiệm (gợi ý, trưởng phòng tự chọn): &lt;1 năm → 1 · 1–2 năm → 2 · 2–3 năm → 3 · ≥3 năm → 4.</div></section>`;
   h += catFlatTable(ro);
+  h += milestoneRulePanel(ro);
   return h;
 }
+/* Cấu hình chung cho toàn hệ thống: quy tắc nhận diện "Mốc chính dự án" (từ "No." + tên đầu việc) và
+   ngưỡng "Sắp đến hạn" (ngày) – xem MILESTONE_RULE_DEFAULT/MODES (constants.js), đọc/tính ở model.js
+   (msClassify(), p._milestones), hiện ở panel "Mốc chính dự án" (planDetail(), plan.js). Chỉ trưởng phòng
+   sửa được (collection "config" dùng chung rule "admin", xem RULES/server.js). */
+function milestoneRulePanel(ro){
+  const r = S.milestoneRule || MILESTONE_RULE_DEFAULT;
+  const modeInfo = MILESTONE_RULE_MODES.find(m=>m[0]===r.mode) || MILESTONE_RULE_MODES[1];
+  return `<section class="panel" style="margin-bottom:18px">
+    <div class="panel-h"><h2>Nhận diện mốc chính &amp; cảnh báo</h2>${ro?"":'<button class="btn" data-act="milestonecfg">Sửa</button>'}</div>
+    <div class="panel-b">
+      <div class="kv">
+        <dt>Quy tắc đang dùng</dt><dd>Mode ${r.mode} — ${esc(modeInfo[1])}</dd>
+        <dt>Ngưỡng "Sắp đến hạn"</dt><dd>${r.dueSoonDays} ngày</dd>
+      </div>
+      <p class="small muted" style="margin:10px 0 0">Áp dụng cho panel "Mốc chính dự án" ở Kế hoạch dự án và cảnh báo "Sắp đến hạn" trong toàn hệ thống. Đổi quy tắc không ảnh hưởng dữ liệu đầu việc đã nhập, chỉ đổi cách hiển thị/tính cảnh báo.</p>
+    </div></section>`;
+}
+function milestoneRuleForm(){
+  const r = S.milestoneRule || MILESTONE_RULE_DEFAULT;
+  openForm({title:"Nhận diện mốc chính & cảnh báo", values:{mode:r.mode, dueSoonDays:r.dueSoonDays},
+    fields:[
+      {key:"mode", label:"Quy tắc nhận diện mốc chính", type:"seg", options:MILESTONE_RULE_MODES.map(m=>[m[0],"Mode "+m[0]]),
+        hint:v=>(MILESTONE_RULE_MODES.find(m=>m[0]===v)||MILESTONE_RULE_MODES[1])[2]},
+      {key:"dueSoonDays", label:"Ngưỡng \"Sắp đến hạn\" (ngày)", type:"number", required:true, hint:()=>"Đầu việc còn hạn trong vòng bao nhiêu ngày thì cảnh báo \"Sắp đến hạn\"."}
+    ],
+    onSave: async v => {
+      const dueSoonDays = +v.dueSoonDays;
+      if(!dueSoonDays || dueSoonDays<1) throw new Error("Ngưỡng cảnh báo phải lớn hơn 0 ngày.");
+      await write("config/milestoneRule", {mode:+v.mode||2, dueSoonDays});
+      toast("Đã lưu cấu hình");
+    }
+  });
+}
+ACTIONS["milestonecfg"] = () => milestoneRuleForm();
 /* "Khung mẫu" đầu việc chuẩn (config/catalog) – 1 bảng PHẲNG, đúng y hệt thứ tự/số thứ tự ("No.") người
    dùng tự gõ theo mẫu Excel của phòng (A/B/C…, I/II…, 1/2…, 1.1…), KHÔNG tự suy luận lồng cấp từ "No." –
    mỗi dòng (kể cả dòng "hạng mục" như "A. TỔNG THỜI GIAN...") là 1 mục catalog độc lập, có thể kèm Ưu
@@ -53,22 +88,48 @@ function catFlatTable(ro){
 function selectHTML(act, id, field, options, val, ro){
   return `<select class="inp" style="width:100%" data-act="${act}" data-id="${esc(id)}" data-f="${field}" ${ro?"disabled":""}>${options.map(([v,l])=>`<option value="${esc(v)}" ${val===v?"selected":""}>${esc(l)}</option>`).join("")}</select>`;
 }
+/* Tự gợi ý "Tên viết tắt" từ Họ tên đầy đủ, ĐÚNG quy ước đã kiểm chứng ngược lại với tên thật trong file
+   mẫu Excel của phòng (vd "Tạ Thị Mai Huyền"→"Huyenttm", "Lưu Ánh Uyên"→"Uyenla", "Đỗ Khánh Ly"→"Lydk" – cả
+   3 đều khớp đúng y hệt dữ liệu PM/TM/AM/ACC thật đã đọc được): lấy TỪ CUỐI (tên gọi, vd "Huyền"→"Huyen",
+   bỏ dấu) làm gốc, nối thêm chữ cái đầu (bỏ dấu, viết thường) của TỪNG TỪ còn lại theo đúng thứ tự (họ →
+   đệm…). "Đ"/"đ" bỏ dấu thành "D"/"d" như quy ước đặt tên tài khoản phổ biến của phòng. */
+function suggestAlias(fullName){
+  const parts = String(fullName||"").trim().split(/\s+/).filter(Boolean);
+  if(!parts.length) return "";
+  const strip = s => s.normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/đ/g,"d").replace(/Đ/g,"D");
+  const first = strip(parts[parts.length-1]);
+  const initials = parts.slice(0,-1).map(w=>strip(w)[0].toLowerCase()).join("");
+  return first + initials;
+}
 function staffForm(i){
-  const isNew = i==null; const s = isNew ? {name:"", title:"", hours:40, pct:0.2, factor:1.0, years:0} : {...S.staff[i]};
+  const isNew = i==null; const s = isNew ? {name:"", alias:"", title:"", hours:40, pct:0.2, factor:1.0, years:0} : {...S.staff[i]};
   const factorHint = (val,vals) => {
     const y = +vals.years||0;
     const sug = y<1?1:y<2?2:y<3?3:4;
     return `Gợi ý theo ${y||0} năm kinh nghiệm: ${sug}`;
   };
   openForm({title:isNew?"Thêm nhân sự":"Sửa nhân sự", values:{...s, pctV:Math.round(s.pct*100)},
-    fields:[{key:"name", label:"Họ tên", type:"text", required:true},
+    fields:[
+      /* Họ tên + Tên viết tắt nằm chung 1 hàng (half:true cả 2, openForm() tự ghép cặp field half liền
+         nhau thành 1 row2, core/ui.js) – gõ xong Họ tên rồi rời ô (change, tức blur) thì TỰ GÁN gợi ý
+         (suggestAlias()) vào ô Tên viết tắt NẾU ô đó đang TRỐNG, vẫn sửa tay lại được bình thường (không
+         ghi đè nếu đã có chữ, kể cả gợi ý cũ – chỉ coi "trống" mới tự gán, theo đúng yêu cầu người dùng). */
+      {key:"name", label:"Họ tên", type:"text", required:true, half:true, onChange:v=>{
+        const a = document.getElementById("f_alias");
+        if(a && !a.value.trim()) a.value = suggestAlias(v);
+      }},
+      /* "Tên viết tắt" – nhiều dự án (nhất là nhập từ Excel) lưu PM/TM/AM/ACC/Phụ trách bằng tên viết tắt
+         (vd "Lydk") khác Họ tên đầy đủ ở đây, nên không tự khớp được người. Khai thêm tên này để LIÊN KẾT
+         2 tên lại (canonStaffName(), constants.js/backend/server.js – dùng cho quyền xem/sửa dự án,
+         KPI/Workload…, KHÔNG đổi chữ hiển thị "Phụ trách" trên các bảng, vẫn hiện nguyên tên đã gõ/nhập). */
+      {key:"alias", label:"Tên viết tắt (tên dùng trong dự án, vd \"Lydk\")", type:"text", half:true, hint:()=>"Tự gợi ý theo Họ tên, gõ đè lại nếu khác."},
       {key:"title", label:"Chức danh (chỉ để tham khảo, dùng cho KPI & Năng lực)", type:"text", hint:()=>"Vd: Network Engineer, Security Engineer…"},
       {key:"hours", label:"Giờ làm / tuần", type:"number", half:true}, {key:"pctV", label:"% trừ họp, phát sinh", type:"number", half:true, hint:()=>"Khuyến nghị 15–25"},
       {key:"years", label:"Số năm kinh nghiệm (chỉ để tham khảo)", type:"number", half:true, hint:()=>"Dùng để gợi ý hệ số năng lực bên cạnh"},
       {key:"factor", label:"Hệ số năng lực", type:"seg", options:[[1,"1"],[2,"2"],[3,"3"],[4,"4"]], half:true, hint:factorHint}],
     onSave: async x => {
       if(!x.name.trim()) throw new Error("Nhập họ tên.");
-      const list=[...S.staff]; const row={name:x.name.trim(), title:x.title||"", hours:+x.hours||40, pct:(+x.pctV||0)/100, factor:+x.factor||1, years:+x.years||0};
+      const list=[...S.staff]; const row={name:x.name.trim(), alias:(x.alias||"").trim(), title:x.title||"", hours:+x.hours||40, pct:(+x.pctV||0)/100, factor:+x.factor||1, years:+x.years||0};
       if(isNew) list.push(row); else list[i]=row;
       await write("config/staff",{list}); toast("Đã lưu nhân sự");
     },

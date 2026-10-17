@@ -1,11 +1,51 @@
 "use strict";
 /* Mô hình tính toán (M): workload, trạng thái hiện tại, tiến độ, cảnh báo – tính lại mỗi lần vẽ */
+/* ================= "Hạng mục" (t.phase/p._phases) + "Mốc chính dự án" (p._milestones) =================
+   Nhận diện từ "No." (t.no, kiểu A/I/1/1.1 – người dùng tự gõ hoặc copy từ file Excel/"Nhập Excel") +
+   tên đầu việc (t.dv), theo đúng công thức đọc được từ file mẫu thật của phòng (CLAUDE.md). Tách bạch 2
+   khái niệm khác nhau dù cùng nguồn dữ liệu:
+     - "Hạng mục" (phase): LUÔN tính theo 1 quy tắc cố định, không cấu hình được – gộp mọi đầu việc dưới
+       đúng 1 dòng "chữ cái đơn" gần nhất phía trên nó (A, B, C… KHÔNG tính I/V/X vì đó là số La Mã – đây
+       chính là quy tắc từng thiếu dẫn tới bỏ hẳn tính năng này trước đây, xem lịch sử ở dưới). Dùng cho
+       dải cảnh báo theo giai đoạn (strip(), ui.js), cột "Hạng mục" (reports.js), gộp theo hạng mục ở
+       "Việc trong tuần" (weekly-input.js) – cả 3 đã viết sẵn, chỉ chờ t.phase/p._phases có dữ liệu thật.
+     - "Mốc chính dự án" (milestone, p._milestones): CẤU HÌNH ĐƯỢC qua S.milestoneRule (config/milestoneRule,
+       Cài đặt → "Nhận diện mốc chính", chỉ trưởng phòng sửa) – xem MILESTONE_RULE_DEFAULT/MODES ở
+       constants.js. Dùng cho panel "Mốc chính dự án" ở Kế hoạch dự án (planDetail(), plan.js). */
+const MILESTONE_ROMAN = new Set(["I","II","III","IV","V","VI","VII","VIII","IX","X","XI","XII","XIII","XIV","XV","XVI","XVII","XVIII","XIX","XX"]);
+/* "Chữ cái đơn" làm hạng mục/mốc cấp 1: đúng 1 ký tự A-Z nhưng KHÔNG thuộc tập số La Mã ở trên (loại trừ
+   I/V/X) – đây là điểm mấu chốt: không suy luận ngữ cảnh, chỉ quy ước cứng I/V/X luôn là số La Mã. */
+function msLetterNo(no){ return /^[A-Za-z]$/.test(no) && !MILESTONE_ROMAN.has(no.toUpperCase()); }
+function msRomanNo(no){ return MILESTONE_ROMAN.has(no.toUpperCase()); }
+function msIntegerNo(no){ return no!=="" && /^\d+$/.test(no); }
+function msPayment(dv){ return (dv||"").toUpperCase().includes("THANH TOÁN"); }
+/* "Ngày khả dụng gần nhất" của 1 đầu việc – ưu tiên Thực tế → HĐ điều chỉnh → Kế hoạch theo HĐ gốc (bỏ
+   qua "Kế hoạch dự kiến" vì không có vai trò ưu tiên rõ trong file mẫu gốc), dùng cho panel mốc chính. */
+function msDate(t){ return {start: t.actStart||t.adjStart||t.hdStart||null, end: t.actEnd||t.adjEnd||t.deadline||null}; }
+/* Duyệt đầu việc ĐÚNG THỨ TỰ lưu trong dự án (không sắp lại), đánh dấu dòng nào là "mốc chính" theo đúng
+   mode đang cấu hình – xem mô tả 3 mode ở MILESTONE_RULE_MODES (constants.js). inPayment theo dõi "đang ở
+   trong nhánh chữ cái có chữ THANH TOÁN hay không", reset lại mỗi khi gặp 1 dòng chữ cái đơn mới. */
+function msClassify(tasksInOrder, mode){
+  let inPayment = false;
+  return tasksInOrder.map(t => {
+    const no = String(t.no||"").trim();
+    const letter = msLetterNo(no), roman = msRomanNo(no), integer = msIntegerNo(no);
+    if(letter) inPayment = msPayment(t.dv);
+    const hasContent = no!=="" || String(t.dv||"").trim()!=="";
+    if(mode===1) return letter || roman;
+    if(mode===3) return inPayment && hasContent;
+    return letter || roman || integer || (inPayment && hasContent);
+  });
+}
 /* ================= derived model ================= */
 let M = null;
 function derive(){
   const today = todayISO(), thisMon = mondayOf(today);
   const staff = S.staff.map(s => ({...s, cap: Math.round((+s.hours||0)*(1-(+s.pct||0))*(+s.factor||1)*10)/10}));
-  const capOf = new Map(staff.map(s => [s.name, s.cap]));
+  /* Đăng ký Capacity theo CẢ Họ tên đầy đủ lẫn Tên viết tắt (s.alias, Cài đặt → Nhân sự – xem
+     canonStaffName() ở constants.js) để tra đúng Capacity dù task.owner/p.pm… lưu tên nào trong 2 tên. */
+  const capOf = new Map();
+  for(const s of staff){ capOf.set(s.name, s.cap); if(s.alias) capOf.set(s.alias, s.cap); }
   const projects = [...S.projects].sort((a,b)=>(a.order??999)-(b.order??999) || a.name.localeCompare(b.name,"vi"));
   const pById = new Map(projects.map(p => [p.id, p]));
   const taskMap = new Map();
@@ -44,14 +84,15 @@ function derive(){
   }
   // tasks enriched
   const tasks = [];
+  const dueSoonDays = (S.milestoneRule && S.milestoneRule.dueSoonDays) ?? 14;
   for(const p of projects){
-    /* KHÔNG tự suy luận "hạng mục" (phase) từ "No." nữa: đã thử nhận diện dòng hạng mục bằng No. thuần
-       chữ cái (vd "A") nhưng số La Mã (I, II…) cũng thuần chữ cái → không phân biệt được với chữ cái dùng
-       làm mã hạng mục bằng text thuần tuý (vd "I" dễ bị hiểu nhầm là hạng mục ngang hàng "A" thay vì nhánh
-       con của 1 hạng mục), có thể gom sai hàng loạt đầu việc vào nhầm hạng mục. Đúng theo yêu cầu người
-       dùng (đổi "Khung mẫu"/"Kế hoạch dự án" sang bảng phẳng, xem settings.js/plan.js): t.phase luôn rỗng,
-       dải cảnh báo theo giai đoạn (strip, ui.js) và cột "Hạng mục" ở reports.js rơi về trạng thái rỗng/
-       "Khác" một cách NHẤT QUÁN, thay vì hiện sai mà trông như đúng. */
+    /* "Hạng mục" (t.phase/phaseName): gộp mọi đầu việc dưới đúng 1 dòng "chữ cái đơn" (msLetterNo(), ở
+       trên) gần nhất phía trước nó trong p.tasks – duyệt đúng thứ tự lưu, không sắp lại. Trước đây từng bỏ
+       hẳn tính năng này vì nhầm số La Mã (I, II…) với chữ cái tiêu đề; nay msLetterNo() loại trừ thẳng
+       I/V/X nên hết nhầm. Đầu việc đứng trước dòng chữ cái đơn đầu tiên (nếu có) nhận phase="" (rơi về
+       "Khác" ở reports.js/strip() như cũ, không gãy gì). */
+    let curPhaseCode = "", curPhaseName = "";
+    const phases = [];
     p._tasks = (p.tasks||[]).map(t => {
       const k = p.id+"|"+t.id;
       const qm = t.qm, pt = t.pt;
@@ -78,7 +119,11 @@ function derive(){
       const updDate = latestDate ? dmy(iso(latestDate)) : "";
       const lastWeek = la ? la.week : null;
       const doerSet = new Set(doersByTask.get(k) || []);
-      if(t.collab) doerSet.add(t.collab);
+      /* canonStaffName(): t.collab (dữ liệu cũ) có thể là tên viết tắt – quy về đúng Họ tên đầy đủ trước
+         khi gộp, tránh 1 người hiện thành 2 dòng khác nhau trong "Thực hiện" (vd vừa "Lydk" vừa "Đặng
+         Hương Ly" cho cùng 1 người) khi so với người đã nhập tuần bằng tên đầy đủ (luôn chuẩn, chọn từ
+         S.staff). */
+      if(t.collab) doerSet.add(canonStaffName(t.collab));
       const doers = [...doerSet].sort((a,b)=>a.localeCompare(b,"vi"));
       const done = status==="Hoàn thành" ? (doneWk.get(k) || null) : null;
       const ontime = done && t.deadline ? (done <= t.deadline) : null;
@@ -86,11 +131,16 @@ function derive(){
       if(p.type!=="Nội bộ"){
         if(!t.owner) warns.push(["bad","Chưa có người phụ trách"]);
         if(OPEN.has(status) && t.deadline && t.deadline < today) warns.push(["bad","Quá hạn"]);
-        if(OPEN.has(status) && t.deadline && t.deadline >= today && days(today,t.deadline) <= 14) warns.push(["warn","Sắp đến hạn"]);
+        if(OPEN.has(status) && t.deadline && t.deadline >= today && days(today,t.deadline) <= dueSoonDays) warns.push(["warn","Sắp đến hạn"]);
         if(OPEN.has(status) && (ms||0) >= 3) warns.push(["bad","Ma sát cao"]);
         if((status==="Đang làm"||status==="Đang vướng") && (!lastWeek || lastWeek < addDays(thisMon,-14))) warns.push(["warn","Không cập nhật >2 tuần"]);
       }
-      const o = {...t, p, key:k, qmE:qm, ptE:pt, wl, status, src, ms, nn, upd, lastNote, updDate, lastWeek, doers, done, ontime, warns, phase:"", phaseName:""};
+      const noStr = String(t.no||"").trim();
+      if(msLetterNo(noStr)){
+        curPhaseCode = noStr.toUpperCase(); curPhaseName = t.dv||"";
+        if(!phases.some(ph=>ph.code===curPhaseCode)) phases.push({code:curPhaseCode, name:curPhaseName});
+      }
+      const o = {...t, p, key:k, qmE:qm, ptE:pt, wl, status, src, ms, nn, upd, lastNote, updDate, lastWeek, doers, done, ontime, warns, phase:curPhaseCode, phaseName:curPhaseName};
       tasks.push(o); return o;
     });
     const live = p._tasks.filter(t => t.status!=="Hủy");
@@ -109,9 +159,16 @@ function derive(){
     p._soon = p._tasks.filter(t=>t.warns.some(w=>w[1]==="Sắp đến hạn")).length;
     p._stuck = p._tasks.filter(t=>OPEN.has(t.status) && (t.status==="Đang vướng" || (t.ms||0)>=1)).length;
     p._maxms = Math.max(0, ...p._tasks.filter(t=>OPEN.has(t.status)).map(t=>t.ms||0));
-    /* Không còn khái niệm "hạng mục" (t.phase luôn rỗng, xem bình luận ở trên) nên p._phases luôn rỗng –
-       dải cảnh báo theo giai đoạn (strip, ui.js) tự ẩn khi mảng rỗng (đã có sẵn, xem ui.js dòng strip()). */
-    p._phases = [];
+    p._phases = phases;
+    /* "Mốc chính dự án": lọc theo đúng mode đang cấu hình (S.milestoneRule), giữ nguyên thứ tự p._tasks.
+       Mang nguyên 4 cặp ngày song song (không chỉ "ngày khả dụng gần nhất") để panel Kế hoạch dự án vẽ lại
+       đúng bảng "II. CÁC MỐC CHÍNH CỦA DỰ ÁN" của sheet Report trong file mẫu (planMilestonesPanel(),
+       plan.js) – xem "Bộ công thức sheet Report" ở CLAUDE.md. */
+    const msFlags = msClassify(p._tasks, (S.milestoneRule && S.milestoneRule.mode) || 2);
+    p._milestones = p._tasks.filter((t,i)=>msFlags[i]).map(t => ({no:t.no, dv:t.dv, pr:t.pr, status:t.status,
+      hdStart:t.hdStart, deadline:t.deadline, adjStart:t.adjStart, adjEnd:t.adjEnd,
+      expStart:t.expStart, expEnd:t.expEnd, actStart:t.actStart, actEnd:t.actEnd,
+      ontime:t.ontime, warns:t.warns}));
   }
   return {today, thisMon, staff, capOf, projects, pById, taskMap, entries, tasks};
 }

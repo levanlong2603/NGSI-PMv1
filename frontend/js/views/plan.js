@@ -1,7 +1,7 @@
 "use strict";
 /* Màn hình: plan */
 /* ================= VIEW: plan ================= */
-/* Trưởng phòng sửa mọi dự án. Nhân viên sửa dự án do mình tạo, hoặc dự án mình là TM (phụ trách)/SE – kể cả thêm/sửa/xoá đầu việc.
+/* Trưởng phòng sửa mọi dự án. Nhân viên sửa dự án do mình tạo, hoặc dự án mình là TM (phụ trách) – kể cả thêm/sửa/xoá đầu việc.
    Xoá cả dự án thì chặt hơn: chỉ người tạo hoặc trưởng phòng, xem canDeleteProject bên dưới. */
 function canManageProject(p){ return !!p && (S.canEdit || (!!S.user && (p.created_by === S.user.username || projectAssigned(p, S.user.staff_name)))); }
 function canDeleteProject(p){ return !!p && (S.canEdit || (!!S.user && p.created_by === S.user.username)); }
@@ -21,7 +21,7 @@ function planToolbar(){
 }
 function planContent(){
   /* Góc nhìn theo "Tôi là": chọn một người (kể cả khi tài khoản là trưởng phòng) thì chỉ thấy dự án
-     người đó là TM (phụ trách) hoặc SE. Chọn "Tất cả" (chỉ trưởng phòng chọn được) hoặc chưa gắn với
+     người đó là TM (phụ trách). Chọn "Tất cả" (chỉ trưởng phòng chọn được) hoặc chưa gắn với
      ai thì thấy mọi dự án. Muốn xem toàn bộ dự án của phòng mà không đổi "Tôi là" thì sang tab Tổng quan. */
   const ps = (!S.me || S.me==="__all__") ? M.projects : M.projects.filter(p=>projectAssigned(p, S.me));
   const filt = S.typeFilter || "Tất cả";
@@ -67,7 +67,7 @@ function planContent(){
    "Mốc hợp đồng"/"Tình hình chung" (p.milestones/p.situation) đã bỏ khỏi trang này theo yêu cầu (chỉ còn ở
    form Sửa thông tin dự án – projectForm() – và Báo cáo → Báo cáo tổng hợp dự án, xem reports.js), dữ liệu
    cũ vẫn giữ nguyên trong CSDL. */
-const PLAN_COLS = 18;
+const PLAN_COLS = 16;
 /* Mức phóng bảng "Kế hoạch dự án" (zoom CSS trên <table>, xem plan.css) – chỉ lưu trong phiên, không ghi
    CSDL, giống các tuỳ chọn hiển thị khác (S.planTog…). */
 function planZoomLevel(){ return S.planZoom || 1; }
@@ -82,20 +82,68 @@ function planDetail(p){
     <div class="toolbar" style="margin-bottom:12px; justify-content:space-between">
       <div>${canManageProject(p)?`${canDeleteProject(p)?`<button class="btn danger" data-act="delp" data-id="${esc(p.id)}">Xoá dự án</button>`:""}<button class="btn" data-act="editp" data-id="${esc(p.id)}">Sửa thông tin</button>`:""}</div>
       <div class="plan-zoom" role="group" aria-label="Phóng to/thu nhỏ bảng">
-        <button class="btn icon" data-act="planzoom" data-d="-0.1" title="Thu nhỏ" aria-label="Thu nhỏ">−</button>
+        <button data-act="planzoom" data-d="-0.1" title="Thu nhỏ" aria-label="Thu nhỏ">−</button>
         <span class="lv">${Math.round(planZoomLevel()*100)}%</span>
-        <button class="btn icon" data-act="planzoom" data-d="0.1" title="Phóng to" aria-label="Phóng to">+</button>
+        <button data-act="planzoom" data-d="0.1" title="Phóng to" aria-label="Phóng to">+</button>
       </div></div>`;
   const rows = planTreeRows(p, {cols:PLAN_COLS});
-  out += `<div class="tbl-wrap panel plan-grid"><table style="min-width:2050px; white-space:nowrap; zoom:${planZoomLevel()}"><thead>
-    <tr><th rowspan="2" class="plan-no">No.</th><th rowspan="2" class="plan-dv" style="white-space:normal">Đầu việc</th><th rowspan="2">Trạng thái</th><th rowspan="2">Ưu tiên</th><th rowspan="2">Phụ trách</th><th rowspan="2">Thực hiện</th>
+  out += `<div class="tbl-wrap panel plan-grid"><div class="plan-scroll"><table style="min-width:2050px; white-space:nowrap; zoom:${planZoomLevel()}"><thead>
+    <tr><th rowspan="2" class="plan-no">No.</th><th rowspan="2" class="plan-dv" style="white-space:normal">Đầu việc</th><th rowspan="2">Trạng thái</th><th rowspan="2">Ưu tiên</th><th rowspan="2">Phụ trách</th>
       <th colspan="2">Thời gian (ngày)</th><th colspan="2">Kế hoạch theo HĐ</th><th colspan="2">Kế hoạch HĐ điều chỉnh</th><th colspan="2">Kế hoạch dự kiến</th><th colspan="2">Kế hoạch thực tế</th>
-      <th rowspan="2">Cảnh báo</th><th rowspan="2" style="white-space:normal; min-width:320px">Note</th></tr>
+      <th rowspan="2">Đánh giá</th></tr>
     <tr><th>Theo thực tế</th><th>Theo đề xuất</th><th>Bắt đầu</th><th>Kết thúc</th><th>Bắt đầu</th><th>Kết thúc</th><th>Bắt đầu</th><th>Kết thúc</th><th>Bắt đầu</th><th>Kết thúc</th></tr>
     </thead>
-    <tbody>${rows||`<tr><td colspan="${PLAN_COLS}"><div class="empty"><b>Dự án chưa có đầu việc.</b>${canManageProject(p)?`<button class="btn primary" style="margin-top:10px" data-act="addtask" data-id="${esc(p.id)}">+ Đầu việc</button>`:""}</div></td></tr>`}</tbody></table></div>
+    <tbody>${rows||`<tr><td colspan="${PLAN_COLS}"><div class="empty"><b>Dự án chưa có đầu việc.</b>${canManageProject(p)?`<button class="btn primary" style="margin-top:10px" data-act="addtask" data-id="${esc(p.id)}">+ Đầu việc</button>`:""}</div></td></tr>`}</tbody></table></div></div>
     <p class="small muted" style="margin:8px 0 0">Bấm vào một đầu việc để xem chi tiết${S.canEdit?", sửa hoặc đánh giá khi hoàn thành":""}.</p></div>`;
   return out;
+}
+/* "Mốc chính dự án" – tự nhận diện từ No./tên đầu việc theo quy tắc đang cấu hình (Cài đặt → "Nhận diện
+   mốc chính", S.milestoneRule, xem msClassify() ở model.js) – tham khảo đúng Section II của sheet Report
+   trong file mẫu thật của phòng (xem CLAUDE.md "Bộ công thức sheet Report"). Gấp/mở bằng <details> thuần,
+   không cần thêm state riêng; tự ẩn hẳn khi dự án không có mốc nào khớp quy tắc (vd dự án không theo đúng
+   quy ước "No." A/I/1/1.1). */
+function planMilestonesPanel(p){
+  const ms = p._milestones || [];
+  if(!ms.length) return "";
+  const mode = (S.milestoneRule && S.milestoneRule.mode) || 2;
+  const modeInfo = MILESTONE_RULE_MODES.find(m=>m[0]===mode) || MILESTONE_RULE_MODES[1];
+  const d = x => x?dmy(x):"–";
+  /* Màu nền ô "Trạng thái", đúng Conditional Formatting cột D của bảng mốc chính trong file mẫu thật
+     (D17:D87: Hoàn thành=xanh lá nhạt, Đang thực hiện=xanh dương nhạt, Pending=vàng) – CHỈ tô riêng ô này
+     (không tô cả dòng như đã thử ở bảng đầu việc chính rồi bỏ theo phản hồi người dùng, xem CLAUDE.md). */
+  const stBg = {"Hoàn thành":"var(--ok-soft)", "Đang làm":"var(--info-soft)", "Tạm dừng":"var(--warn-soft)"};
+  const rows = ms.map((m,i) => {
+    const no = String(m.no||"").trim();
+    const hdrKind = msLetterNo(no) ? "a" : msRomanNo(no) ? "r" : "";
+    /* "Chênh lệch (ngày)" + "Đánh giá": Thực tế – Kế hoạch theo HĐ gốc (actEnd − deadline), y hệt công
+       thức M17 của file mẫu (K17−G17) – chỉ tính được khi có đủ cả 2 ngày, không suy đoán khi thiếu. */
+    let diff = null, assess = "";
+    if(m.actEnd && m.deadline){
+      diff = days(m.deadline, m.actEnd);
+      assess = diff===0 ? '<span class="pill ok">✓ Đúng hạn</span>'
+        : diff<0 ? `<span class="pill ok">✓ Sớm ${Math.abs(diff)} ngày</span>`
+        : `<span class="pill bad">⚠ Trễ ${diff} ngày</span>`;
+    }
+    return `<tr>
+      <td class="plan-no" style="text-align:center">${i+1}</td>
+      <td class="plan-dv" style="text-align:left">${hdrKind?`<span class="plan-no-tag plan-no-${hdrKind}">${esc(no||"–")}</span> `:(no?esc(no)+". ":"")}${esc(planShortName(m.dv))}</td>
+      <td style="background:${stBg[m.status]||"transparent"}">${stPill(m.status)}</td>
+      <td style="text-align:center">${m.pr?`<span class="pill ${m.pr==="Cao"?"bad":"mute"}">${esc(m.pr)}</span>`:"–"}</td>
+      <td>${d(m.hdStart)}</td><td>${d(m.deadline)}</td>
+      <td>${d(m.adjStart)}</td><td>${d(m.adjEnd)}</td>
+      <td>${d(m.expStart)}</td><td>${d(m.expEnd)}</td>
+      <td>${d(m.actStart)}</td><td>${d(m.actEnd)}</td>
+      <td style="text-align:center">${diff==null?"–":diff}</td>
+      <td style="text-align:center">${assess||"–"}</td></tr>`;
+  }).join("");
+  return `<details class="panel" style="margin-bottom:12px"><summary class="panel-h" style="cursor:pointer"><h2>Mốc chính dự án <span class="small muted">· ${ms.length} mốc</span></h2></summary>
+    <div class="panel-b small muted" style="padding-top:0">Chế độ nhận diện mốc: <b>Mode ${mode}</b> — ${esc(modeInfo[1])}. Đổi ở Cài đặt → "Nhận diện mốc chính &amp; cảnh báo".</div>
+    <div class="tbl-wrap plan-grid" style="max-height:60vh"><table style="min-width:1400px"><thead>
+      <tr><th rowspan="2" class="plan-no">STT</th><th rowspan="2" class="plan-dv" style="white-space:normal">Hạng mục / Giai đoạn</th><th rowspan="2">Trạng thái</th><th rowspan="2">Ưu tiên</th>
+        <th colspan="2">Kế hoạch (HĐ gốc)</th><th colspan="2">HĐ điều chỉnh</th><th colspan="2">Dự kiến</th><th colspan="2">Thực tế</th>
+        <th rowspan="2" style="white-space:normal">Chênh lệch<br>(ngày)</th><th rowspan="2">Đánh giá</th></tr>
+      <tr><th>Bắt đầu</th><th>Kết thúc</th><th>Bắt đầu</th><th>Kết thúc</th><th>Bắt đầu</th><th>Kết thúc</th><th>Bắt đầu</th><th>Kết thúc</th></tr>
+    </thead><tbody>${rows}</tbody></table></div></details>`;
 }
 /* Bảng đầu việc PHẲNG, không gấp/mở – đúng thứ tự lưu trong p.tasks (giữ nguyên thứ tự khung mẫu lúc tạo
    dự án, xem catFlatTable() ở settings.js/projectForm() ở plan.js). "No." (t.no, tự gõ hoặc copy từ khung
@@ -104,9 +152,15 @@ function planDetail(p){
    trước đây tách bỏ phần "mã. hạng mục –" mã hoá trong t.dv, giờ t.dv đã là tên thuần nên chỉ trả nguyên. */
 function planShortName(dv){ return dv||""; }
 /* Khớp đúng mẫu bảng Excel giấy của phòng (No./Nội dung/Trạng thái/Ưu tiên/Người phụ trách/Thời gian
-   (ngày)/4 cặp Bắt đầu-Kết thúc/Note) + giữ thêm cột riêng của app (Thực hiện, Cảnh báo) không có trong
-   Excel nhưng đang hữu ích – xem thead 2 dòng tương ứng ở planDetail(). Bảng khá rộng, cuộn ngang nhờ
-   .tbl-wrap{overflow-x:auto} (base.css).
+   (ngày)/4 cặp Bắt đầu-Kết thúc/cột "ĐÁNH GIÁ" cuối bảng) – đã bỏ cột "Note" (không có trong file mẫu) và
+   đổi cột "Cảnh báo" riêng của app thành "Đánh giá" y hệt sheet `Report` của file mẫu: so Thực tế – Kế
+   hoạch theo HĐ gốc (`actEnd − deadline`, công thức `M17`=`K17−G17`), chỉ tính khi có đủ cả 2 ngày – 0→"✓
+   Đúng hạn", âm→"✓ Sớm N ngày", dương→"⚠ Trễ N ngày", dùng lại ĐÚNG công thức đã viết ở
+   `planMilestonesPanel()` (xem bên dưới), không vẽ lại riêng. `t.warns`/cảnh báo kiểu cũ (Quá hạn/Sắp đến
+   hạn/Ma sát cao…) không còn hiện thành cột ở đây nữa nhưng vẫn tính trong `model.js`, vẫn dùng ở dải cảnh
+   báo theo giai đoạn (`strip()`), Dashboard, số đếm quá hạn/sắp hạn… – chỉ không có cột riêng trong bảng
+   này. Xem thead 2 dòng tương ứng ở planDetail(). Bảng khá rộng, cuộn ngang nhờ .tbl-wrap{overflow-x:auto}
+   (base.css).
    Với ai sửa được dự án (canManageProject): 3 nút nổi (.plan-rowacts, position:absolute đè lên trong đúng ô
    "No." – KHÔNG phải 1 cột riêng, để không làm bảng rộng thêm/đẩy lệch các cột khác) chỉ hiện khi di chuột
    vào dòng (CSS tr:hover, xem plan.css) – "Chèn dòng lên trên"/"Chèn dòng xuống dưới" (dòng trống mới, điền
@@ -117,24 +171,33 @@ function planTaskRow(t, i, lvl=1, p){
   const idle = t.status==="Chưa bắt đầu";
   const d = x => x?dmy(x):"–";
   const canAct = p && canManageProject(p);
-  return `<tr class="click${idle?" tr-idle":""}" data-act="task" data-id="${esc(t.id)}" tabindex="0" title="${esc(t.dv)}">
-      <td class="plan-no">${esc(t.no||"–")}${canAct?`<div class="plan-rowacts">
+  /* Nổi bật trực quan "No." là hạng mục chữ cái (A/B/C…) hay số La Mã (I/II/III…) để phân biệt ngay bằng
+     mắt, dùng ĐÚNG quy tắc loại trừ I/V/X đã thống nhất (msLetterNo()/msRomanNo(), model.js) – không tự vẽ
+     lại quy tắc riêng ở đây. Chữ cái = cấp hạng mục lớn nhất → đậm nhất (nền + chữ đậm cả dòng); La Mã =
+     cấp hạng mục con → nhẹ hơn (chỉ đậm ô No., không tô nền cả dòng); còn lại (số thường/thập phân) giữ
+     nguyên như trước, không đổi gì. */
+  const no = String(t.no||"").trim();
+  const hdrKind = msLetterNo(no) ? "a" : msRomanNo(no) ? "r" : "";
+  /* Tô nền cả dòng theo Trạng thái từng thử (bảng chú giải màu sheet Infor) nhưng người dùng phản hồi muốn
+     bảng trắng như cũ, CHỈ giữ màu nổi bật ở dòng hạng mục chữ cái (hdrKind="a") – đã bỏ class plan-st-*,
+     xem CSS .plan-st-* ở plan.css vẫn giữ lại (không xoá) phòng khi cần dùng lại, chỉ không gắn ở đây nữa. */
+  return `<tr class="click${idle?" tr-idle":""}${hdrKind?" plan-hdr-"+hdrKind:""}" data-act="task" data-id="${esc(t.id)}" tabindex="0" title="${esc(t.dv)}">
+      <td class="plan-no">${hdrKind?`<span class="plan-no-tag plan-no-${hdrKind}">${esc(t.no||"–")}</span>`:esc(t.no||"–")}${canAct?`<div class="plan-rowacts">
         <button type="button" data-act="taskinsert" data-pid="${esc(p.id)}" data-id="${esc(t.id)}" data-dir="up" title="Chèn dòng lên trên">↑+</button>
         <button type="button" data-act="taskinsert" data-pid="${esc(p.id)}" data-id="${esc(t.id)}" data-dir="down" title="Chèn dòng xuống dưới">↓+</button>
         <button type="button" data-act="taskdelrow" data-pid="${esc(p.id)}" data-id="${esc(t.id)}" title="Xoá dòng">✕</button>
       </div>`:""}</td>
       <td class="plan-dv" style="padding-left:10px; white-space:normal; text-align:left"><div class="cell-main">${esc(t.dv)}</div>${t.detail&&!idle?`<div class="cell-sub">${esc(t.detail)}</div>`:""}</td>
       <td>${stPill(t.status)}${t.done?`<div class="small muted">xong tuần ${isoWeek(t.done)}</div>`:""}</td>
-      <td style="text-align:center">${t.pr?`<span class="pill ${t.pr==="P1"?"bad":"mute"}">${esc(t.pr)}</span>`:""}</td>
+      <td style="text-align:center">${t.pr?`<span class="pill ${t.pr==="Cao"?"bad":"mute"}">${esc(t.pr)}</span>`:""}</td>
       <td>${esc(t.owner||"–")}</td>
-      <td>${t.doers.length?t.doers.map(esc).join(", "):"–"}</td>
       <td style="text-align:center">${t.daysActual??"–"}</td><td style="text-align:center">${t.daysProposed??"–"}</td>
       <td>${d(t.hdStart)}</td><td>${d(t.deadline)}</td>
       <td>${d(t.adjStart)}</td><td>${d(t.adjEnd)}</td>
       <td>${d(t.expStart)}</td><td>${d(t.expEnd)}</td>
       <td>${d(t.actStart)}</td><td>${d(t.actEnd)}</td>
-      <td style="white-space:normal; text-align:left">${warnPills(t.warns)}${t.ontime===true?' <span class="pill ok">Đúng hạn</span>':t.ontime===false?' <span class="pill bad">Trễ hạn</span>':""}${t.status==="Hoàn thành"&&!(t.eval&&t.eval.dat)&&S.canEdit?' <span class="pill info">Chờ đánh giá</span>':""}</td>
-      <td class="small" style="white-space:normal; text-align:left; min-width:320px">${esc(t.note||"–")}</td></tr>`;
+      <td style="text-align:center">${(()=>{ if(!t.actEnd||!t.deadline) return "–"; const diff=days(t.deadline,t.actEnd);
+        return diff===0?'<span class="pill ok">✓ Đúng hạn</span>':diff<0?`<span class="pill ok">✓ Sớm ${Math.abs(diff)} ngày</span>`:`<span class="pill bad">⚠ Trễ ${diff} ngày</span>`; })()}</td></tr>`;
 }
 /* o.row dựng dòng (mặc định planTaskRow), o.cols số cột – chỉ còn 2 tham số thật sự dùng vì bảng không
    còn gấp/mở theo hạng mục nữa (đã đổi theo yêu cầu người dùng: xem cùng thay đổi ở settings.js). */
@@ -260,7 +323,7 @@ function planImportConfirm(parsed){
           owner:t.owner||"", collab:"", deadline:t.deadline, hdStart:t.hdStart,
           adjStart:t.adjStart, adjEnd:t.adjEnd, expStart:t.expStart, expEnd:t.expEnd, actStart:t.actStart, actEnd:t.actEnd,
           daysActual:t.daysActual, daysProposed:t.daysProposed, qm:null, pt:null,
-          pr: cat ? (cat.pr==="Cao"?"P1":"P2") : "P2",
+          pr: cat ? (cat.pr==="Cao"?"Cao":"Bình thường") : "Bình thường",
           init:{status:t.status||"", ms:null, nn:""}, note:t.note||"", eval:{}};
       });
       const roleFields = {owner:x.tm||x.pm||"", se:"", pm:x.pm||"", tm:x.tm||"", am:x.am||"", acc:x.acc||""};
@@ -273,18 +336,27 @@ function planImportConfirm(parsed){
 }
 function projectForm(p){
   const isNew = !p;
-  const v = p ? {...clean(p)} : {id:"", name:"", type:"Triển khai", client:"", pm:"", tm:"", am:"", acc:"", milestones:"", progress:"", situation:"", proposal:"", difficulty:1};
+  const v = p ? {...clean(p)} : {id:"", name:"", type:"Triển khai", client:"", owner:"", pm:"", tm:"", am:"", acc:"", milestones:"", progress:"", situation:"", proposal:"", difficulty:1};
+  const staffOpts = [["",""],...(S.staff||[]).map(s=>[s.name,s.name])];
   openForm({
     title: isNew ? "Dự án mới" : "Sửa thông tin dự án", values:v,
     fields:[
       {key:"name", label:"Tên dự án / gói thầu / tư vấn", type:"text", required:true},
       {key:"client", label:"Khách hàng", type:"text"},
       {key:"type", label:"Loại", type:"seg", options:TYPES.map(t=>[t,t]), disabled:!isNew && (p.tasks||[]).length>0, hint:()=>!isNew&&(p.tasks||[]).length?"Không đổi loại khi dự án đã có đầu việc.":"Quyết định quy trình đầu việc áp dụng."},
-      /* Gõ tay tên (type:"text"), KHÔNG chọn trong danh sách nhân sự (config/staff) nữa – nhiều dự án nhập
-         từ Excel có PM/TM/AM/ACC là tên viết tắt/tài khoản (vd "Lydk", "Phucnb") không khớp tên đầy đủ
-         trong S.staff, chọn <select> sẽ luôn hiện trống không gõ được. ownerOpts ở taskForm() (gán "Phụ
-         trách" cho đầu việc) vẫn hoạt động bình thường vì chỉ so khớp CHUỖI với 4 trường này, không quan
-         tâm có khớp tên trong S.staff hay không. */
+      /* "Người phụ trách" (owner) – chọn trong danh sách nhân sự phòng (S.staff, theo đúng Họ tên đầy đủ,
+         không phải tên viết tắt như 4 ô Vai trò dự án bên dưới) – khôi phục lại theo yêu cầu người dùng
+         (trước đó đã bỏ, suy tự động owner=tm||pm, xem lịch sử ở onSave). Chọn thẳng từ S.staff tránh lặp
+         lại vấn đề của roleOpts() (alias không khớp hết dữ liệu thật) vì đây LUÔN là Họ tên đầy đủ, khớp
+         thẳng user.staff_name để tính quyền own-project (RULES/canWrite, server.js; projectAssigned(),
+         constants.js) – không qua alias nên không có rủi ro "chưa khớp nhân sự". */
+      {key:"owner", label:"Người phụ trách", type:"select", options:staffOpts, hint:"Người chịu trách nhiệm chính dự án – quyết định quyền sửa/xoá dự án."},
+      /* Gõ tay tên (type:"text"), KHÔNG chọn trong danh sách nhân sự (config/staff) – đã thử đổi sang
+         <select> lọc theo alias (roleOpts()) nhưng người dùng phản hồi muốn quay lại ô nhập tay như trước
+         (dữ liệu dự án thật đang dùng nhiều biến thể tên viết tắt/tài khoản không khớp hết alias cấu hình
+         sẵn, vd "Truonghm"/"Linhpd"/"Thuongnth" vẫn báo "chưa khớp nhân sự" dù đã nhập đúng) – ownerOpts ở
+         taskForm() (gán "Phụ trách" cho đầu việc) vẫn hoạt động bình thường vì chỉ so khớp CHUỖI với 4
+         trường này, không quan tâm có khớp tên trong S.staff hay không. */
       {heading:"Vai trò dự án (gán người phụ trách theo đầu việc chuẩn trong khung mẫu – xem Cài đặt)"},
       {key:"pm", label:"PM", type:"text", half:true},
       {key:"tm", label:"TM", type:"text", half:true},
@@ -303,12 +375,13 @@ function projectForm(p){
     saveLabel: isNew ? "Tạo dự án" : "Lưu thay đổi",
     onSave: async x => {
       if(!x.name.trim()) throw new Error("Nhập tên dự án.");
-      /* "Người phụ trách"/"SE" (owner/se) đã bỏ khỏi form theo yêu cầu (trùng việc với khối Vai trò dự án
-         mới, web không còn là web riêng Phòng Kỹ thuật) – owner suy tự động từ TM (hoặc PM nếu chưa có TM)
-         để KHÔNG phá quyền ghi own-project đang dựa vào p.owner/p.se (RULES/canWrite, server.js;
-         projectAssigned(), constants.js – 2 trường này KHÔNG đổi tên/xoá, chỉ không còn ô nhập tay). se để
-         trống vĩnh viễn từ nay – cột "SE" ở Báo cáo tổng hợp dự án (reports.js) sẽ rỗng với dự án mới. */
-      const roleFields = {owner:x.tm||x.pm||"", se:"", pm:x.pm||"", tm:x.tm||"", am:x.am||"", acc:x.acc||""};
+      /* "Người phụ trách" (owner) nay chọn trực tiếp từ ô "Người phụ trách" (select theo S.staff) – nếu
+         chưa chọn (dự án cũ/để trống) thì rơi về suy tự động từ TM (hoặc PM) như trước để không phá quyền
+         ghi own-project đang dựa vào p.owner (RULES/canWrite, server.js; projectAssigned(), constants.js).
+         "SE" đã bỏ hẳn khỏi khái niệm web (web cho Phòng Quản lý dự án, PM là vai trò chính) – se vẫn ghi
+         "" để không đổi định dạng tài liệu projects hiện có, nhưng không còn chỗ nào đọc/kiểm tra quyền
+         theo trường này nữa (projectAssigned() chỉ còn so p.owner). */
+      const roleFields = {owner:x.owner||x.tm||x.pm||"", se:"", pm:x.pm||"", tm:x.tm||"", am:x.am||"", acc:x.acc||""};
       if(isNew){
         let id = "p-"+slug(x.name); if(M.pById.get(id)) id += "-"+Math.random().toString(36).slice(2,5);
         /* Luôn tạo sẵn toàn bộ đầu việc theo đúng cấu trúc khung mẫu (config/catalog, xem catFlatTable()
@@ -316,7 +389,7 @@ function projectForm(p){
            vai trò (c.role) gán ở trên nếu có, không thì để trống cho PM tự gán sau. */
         const roleOf = {PM:x.pm, TM:x.tm, AM:x.am, ACC:x.acc};
         const tasks = S.catalog.filter(c=>c.type===x.type).map((c,i)=>({id:"t"+String(i+1).padStart(3,"0"), no:c.no||"", dv:c.name, detail:"",
-          owner:(c.role && roleOf[c.role]) || "", collab:"", deadline:null, qm:null, pt:null, pr:c.pr==="Cao"?"P1":"P2",
+          owner:(c.role && roleOf[c.role]) || "", collab:"", deadline:null, qm:null, pt:null, pr:c.pr==="Cao"?"Cao":"Bình thường",
           init:{status:"",ms:null,nn:""}, note:"", eval:{}}));
         const order = Math.max(0,...M.projects.map(q=>q.order||0))+1;
         await saveProject({id, name:x.name.trim(), client:x.client||"", type:x.type, ...roleFields, milestones:x.milestones||"", progress:x.progress||"", situation:x.situation||"", proposal:x.proposal||"", difficulty:x.difficulty||1, order, tasks});
@@ -332,30 +405,32 @@ function taskForm(p, t){
   const isNew = !t;
   const raw = t ? (p.tasks||[]).find(x=>x.id===t.id) : null;
   const v = raw ? {...raw, st0:(raw.init||{}).status||"", ms0:(raw.init||{}).ms??null, nn0:(raw.init||{}).nn||"", dat:(raw.eval||{}).dat||"", cl:(raw.eval||{}).cl??null, tc:(raw.eval||{}).tc??null, nx:(raw.eval||{}).nx||""}
-    : {id:"", no:"", dv:"", detail:"", owner:p.owner||"", collab:"", deadline:null, hdStart:null, adjStart:null, adjEnd:null, expStart:null, expEnd:null, actStart:null, actEnd:null, daysActual:null, daysProposed:null, qm:null, pt:null, pr:"P2", st0:"", ms0:null, nn0:"", note:""};
+    : {id:"", no:"", dv:"", detail:"", owner:p.owner||"", collab:"", deadline:null, hdStart:null, adjStart:null, adjEnd:null, expStart:null, expEnd:null, actStart:null, actEnd:null, daysActual:null, daysProposed:null, qm:null, pt:null, pr:"Bình thường", st0:"", ms0:null, nn0:"", note:""};
   /* "Đầu việc" là ô nhập tự do (type:"text"), KHÔNG còn chọn theo "Khung mẫu" (config/catalog) như trước –
      khung mẫu chỉ dùng để sinh sẵn đầu việc lúc tạo dự án mới (projectForm()), còn PM thêm/chèn đầu việc
      ngoài khung lúc dự án đã chạy (vd qua "Chèn dòng lên trên/xuống dưới" ở bảng, planTaskRow()) thì thực tế
      hiếm khi khớp đúng tên trong khung mẫu – để PM tự gõ tên thay vì ép chọn trong danh sách cố định
-     (đổi theo yêu cầu người dùng). `cOf(t.dv)` bên dưới tra khung mẫu theo đúng tên gõ để vẫn hiện được "Kết
-     quả đầu ra"/"Chú thích" NẾU tên khớp sẵn có trong khung – không khớp thì hiện "–", không báo lỗi gì.
+     (đổi theo yêu cầu người dùng).
      "Phụ trách" của 1 đầu việc chỉ chọn trong đúng 4 người giữ vai trò PM/TM/AM/ACC của dự án (gán ở
      "Sửa thông tin dự án" – projectForm() trên) – không còn chọn tự do trong toàn bộ nhân sự phòng như
      trước, đúng theo yêu cầu người dùng (4 vai trò này là nguồn duy nhất gán người phụ trách đầu việc). */
   const ownerOpts = [["",""],...[...new Set([p.pm,p.tm,p.am,p.acc].filter(Boolean))].map(n=>[n,n])];
   if(!canManageProject(p)){ if(isNew){ toast("Chỉ trưởng phòng hoặc người tạo dự án mới thêm đầu việc."); return; } return openInfo(p, t); }
-  const cOf = n => S.catalog.find(c=>c.type===p.type && c.name===n) || {};
   openForm({
     title: isNew ? "Thêm đầu việc" : "Đầu việc", subtitle: p.name, values:v,
     info: t ? `<div class="kv" style="margin-bottom:16px"><dt>Trạng thái hiện tại</dt><dd>${stPill(t.status)}</dd>
-      <dt>Cập nhật mới nhất</dt><dd>${esc(t.upd||"–")}</dd><dt>Ngày cập nhật</dt><dd>${esc(t.updDate||"–")}</dd><dt>Kết quả đầu ra</dt><dd>${esc(cOf(t.dv).result||"–")}</dd><dt>Chú thích</dt><dd>${esc(cOf(t.dv).evidence||"–")}</dd></div>` : "",
+      <dt>Cập nhật mới nhất</dt><dd>${esc(t.upd||"–")}</dd><dt>Ngày cập nhật</dt><dd>${esc(t.updDate||"–")}</dd></div>` : "",
     fields:[
       {key:"no", label:"No.", type:"text", half:true},
       {key:"dv", label:"Đầu việc", type:"text", required:true, half:true},
       {key:"detail", label:"Nội dung chi tiết", type:"textarea"},
       {key:"owner", label:"Phụ trách", type:"select", options:ownerOpts, half:true, hint:()=>ownerOpts.length>1?"":"Dự án chưa gán PM/TM/AM/ACC nào – sửa ở “Sửa thông tin dự án”."},
-      {key:"pr", label:"Ưu tiên", type:"seg", options:["P1","P2","P3","P4"].map(x=>[x,x]), half:true},
-      {key:"qm", label:"Quy mô", type:"seg", options:[1,2,3,4,5].map(n=>[n,String(n)]), required:true, hint:v=>v?`${QM_HINT[v]} (≈${fmt1(QM_HOURS[v])}h)`:[1,2,3,4,5].map(n=>n+" = "+QM_HINT[n]+" (≈"+fmt1(QM_HOURS[n])+"h)").join(" · ")},
+      {key:"pr", label:"Ưu tiên", type:"seg", options:TASK_PR.map(x=>[x,x]), half:true},
+      /* Không bắt buộc chọn Quy mô nữa (theo yêu cầu người dùng, file mẫu thật nhiều đầu việc – nhất là
+         dòng hạng mục – không có Quy mô) – thiếu Quy mô vẫn tính được (wlOf() trả null, model.js đã có sẵn
+         cơ chế coi trọng số 1 khi tính tiến độ nên không "biến mất" khỏi mẫu số, xem "Công thức Workload/
+         Capacity" ở CLAUDE.md), chỉ riêng Workload (giờ) của đầu việc đó hiện "–" thay vì có số. */
+      {key:"qm", label:"Quy mô (để trống = chưa ước lượng)", type:"seg", options:[1,2,3,4,5].map(n=>[n,String(n)]), hint:v=>v?`${QM_HINT[v]} (≈${fmt1(QM_HOURS[v])}h)`:[1,2,3,4,5].map(n=>n+" = "+QM_HINT[n]+" (≈"+fmt1(QM_HOURS[n])+"h)").join(" · ")},
       {key:"pt", label:"Độ phức tạp (để trống = mặc định 1,0)", type:"seg", options:[[null,"Mặc định"],...[1,2,3,4,5].map(n=>[n,String(n)])], hint:v=>v?`${PT_HINT[v]} (×${fmt1(PT_MULT[v])})`:""},
       /* Khối ngày tháng theo đúng mẫu bảng Excel giấy của phòng (4 cặp Bắt đầu/Kết thúc song song + Thời
          gian theo ngày) – "Kế hoạch theo HĐ – Kết thúc" vẫn dùng field "deadline" cũ (KHÔNG đổi tên: nhiều
@@ -381,8 +456,9 @@ function taskForm(p, t){
       /* "Ghi chú của trưởng phòng" (task.note) không còn sửa được ở đây nữa – đã có "Đánh giá khi hoàn
          thành" bên dưới cho nhận xét sau khi xong; ghi chú vướng mắc/định hướng xử lý giờ chỉ sửa ở Nhập
          theo tuần (weekly-input.js, field "mgrNote" – cùng ghi vào task.note qua route task-note). Vẫn
-         đọc lại t.note để hiển thị (xem planDetail/dashRow), chỉ bỏ ô sửa ở form này. */
-      /* Chỉ trưởng phòng đánh giá khi hoàn thành, không phải nhân viên (kể cả TM/SE/người tạo được sửa đầu việc) */
+         đọc lại t.note để hiển thị (xem openInfo() bên dưới, popup chi tiết 1 đầu việc) – bảng Kế hoạch dự
+         án (planTaskRow()) đã bỏ cột "Note" riêng theo yêu cầu người dùng, chỉ còn xem được qua đây. */
+      /* Chỉ trưởng phòng đánh giá khi hoàn thành, không phải nhân viên (kể cả TM/người tạo được sửa đầu việc) */
       ...(t && t.status==="Hoàn thành" && S.canEdit ? [
         {heading:"Đánh giá khi hoàn thành"},
         {key:"dat", label:"Đạt yêu cầu?", type:"seg", options:[["Đạt","Đạt"],["Đạt một phần","Đạt một phần"],["Không đạt","Không đạt"]]},
@@ -393,10 +469,11 @@ function taskForm(p, t){
     saveLabel: isNew ? "Thêm đầu việc" : "Lưu thay đổi",
     onSave: async x => {
       const tasks = [...(p.tasks||[])];
-      /* "Thực hiện" (task.collab – gán tay ai được giao làm) đã bỏ khỏi form theo yêu cầu: cột "Thực hiện"
-         ở bảng Kế hoạch dự án giờ chỉ còn suy từ người thực sự nhập "Nhập theo tuần" cho đúng đầu việc đó
-         (t.doers, model.js), không còn gán trước tay nữa. Vẫn GIỮ NGUYÊN giá trị collab cũ (nếu có từ lúc
-         còn ô nhập) khi sửa đầu việc đã có sẵn, tránh xoá mất dữ liệu cũ một cách âm thầm. */
+      /* "Thực hiện" (task.collab – gán tay ai được giao làm) đã bỏ khỏi form theo yêu cầu từ trước; cột
+         "Thực hiện" ở bảng Kế hoạch dự án (suy từ t.doers, model.js) sau đó cũng đã bỏ hẳn theo yêu cầu
+         người dùng – t.doers vẫn tính trong model.js (dùng ở reports.js/kpi.js) chỉ không hiện cột riêng ở
+         đây nữa. Vẫn GIỮ NGUYÊN giá trị collab cũ (nếu có từ lúc còn ô nhập) khi sửa đầu việc đã có sẵn,
+         tránh xoá mất dữ liệu cũ một cách âm thầm. */
       const body = {id: x.id || nextTaskId(p), no:x.no||"", dv:x.dv, detail:x.detail||"", owner:x.owner||"", collab: raw ? (raw.collab||"") : "", deadline:x.deadline||null,
         hdStart:x.hdStart||null, adjStart:x.adjStart||null, adjEnd:x.adjEnd||null, expStart:x.expStart||null, expEnd:x.expEnd||null, actStart:x.actStart||null, actEnd:x.actEnd||null,
         daysActual:x.daysActual??null, daysProposed:x.daysProposed??null, qm:x.qm||null, pt:x.pt||null, pr:x.pr||"",
@@ -419,7 +496,7 @@ ACTIONS["taskinsert"] = async el => {
   const idx = tasks.findIndex(q=>q.id===el.dataset.id); if(idx<0) return;
   const row = {id:nextTaskId(p), no:"", dv:"", detail:"", owner:"", collab:"", deadline:null,
     hdStart:null, adjStart:null, adjEnd:null, expStart:null, expEnd:null, actStart:null, actEnd:null,
-    daysActual:null, daysProposed:null, qm:null, pt:null, pr:"P2", init:{status:"",ms:null,nn:""}, note:"", eval:{}, updatedAt:Date.now()};
+    daysActual:null, daysProposed:null, qm:null, pt:null, pr:"Bình thường", init:{status:"",ms:null,nn:""}, note:"", eval:{}, updatedAt:Date.now()};
   tasks.splice(el.dataset.dir==="up" ? idx : idx+1, 0, row);
   await saveProject({...p, tasks}); toast("Đã chèn dòng – bấm vào dòng mới để điền nội dung");
 };
@@ -432,7 +509,6 @@ ACTIONS["taskdelrow"] = async el => {
    cần điều hướng tiếp (xem ACTIONS["exinfo"] ở exec-dashboard.js). Gọi không kèm tham số (taskForm() ở
    trên, khi nhân viên không có quyền sửa) thì vẫn chỉ xem thuần, không có nút thêm. */
 function openInfo(p, t, extraBtn){
-  const c = S.catalog.find(x=>x.type===p.type && x.name===t.dv)||{};
   openForm({title:"Đầu việc", subtitle:p.name, values:{}, fields:[], readOnly:true, extraBtn,
     info:`<h3 style="margin-bottom:12px">${t.no?esc(t.no)+". ":""}${esc(t.dv)}</h3><div class="kv"><dt>Nội dung</dt><dd>${esc(t.detail||"–")}</dd><dt>Phụ trách</dt><dd>${esc(t.owner||"–")}</dd>
     <dt>Trạng thái</dt><dd>${stPill(t.status)}</dd><dt>Cập nhật</dt><dd>${esc(t.upd||"–")}</dd><dt>Ngày cập nhật</dt><dd>${esc(t.updDate||"–")}</dd>
@@ -440,7 +516,7 @@ function openInfo(p, t, extraBtn){
     ${t.adjStart||t.adjEnd?`<dt>Kế hoạch HĐ điều chỉnh</dt><dd>${dmy(t.adjStart)} – ${dmy(t.adjEnd)}</dd>`:""}
     ${t.expStart||t.expEnd?`<dt>Kế hoạch dự kiến</dt><dd>${dmy(t.expStart)} – ${dmy(t.expEnd)}</dd>`:""}
     ${t.actStart||t.actEnd?`<dt>Kế hoạch thực tế</dt><dd>${dmy(t.actStart)} – ${dmy(t.actEnd)}</dd>`:""}
-    <dt>Kết quả đầu ra</dt><dd>${esc(c.result||"–")}</dd><dt>Workload</dt><dd>${t.wl??"–"}</dd>
+    <dt>Workload</dt><dd>${t.wl??"–"}</dd>
     <dt>Note</dt><dd>${esc(t.note||"–")}</dd></div>`});
 }
 

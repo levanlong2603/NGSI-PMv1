@@ -21,6 +21,12 @@ const TYPE_COLOR = {"Triển khai":"var(--teal)","Thầu":"var(--indigo)","Nội
    trên dự án (p.pm/p.tm/p.am/p.acc, xem projectForm() ở plan.js), không cần chọn tay từng đầu việc. */
 const CAT_ROLES = [["","–"],["PM","PM"],["TM","TM"],["AM","AM"],["ACC","ACC (kế toán)"]];
 const CAT_PR = ["Cao","Bình thường"];
+/* Ưu tiên đầu việc thật (task.pr, taskForm() ở plan.js) – 3 mốc giống đúng chữ dùng trong file mẫu Excel
+   của phòng (cột "ƯU TIÊN" sheet NGSI chỉ có "Cao"/"Bình thường"), thêm "Thấp" làm mốc thứ 3 để PM tự hạ
+   bớt ưu tiên những đầu việc phụ khi cần (file mẫu không có mốc này, catalog – CAT_PR – cũng chỉ có 2 mốc
+   vì chỉ dùng làm khung mẫu "Cao"/"Bình thường" mặc định). Đã bỏ hẳn kiểu mã P1–P4 cũ (không khớp cách
+   gọi tên của phòng) – nơi nào còn đọc "P1" là lỗi, phải đổi sang so chuỗi "Cao". */
+const TASK_PR = ["Cao","Bình thường","Thấp"];
 /* Bộ lọc dự án dùng chung cho Kế hoạch dự án & Tổng quan dự án (S.typeFilter) – tách Triển khai thành Đang triển khai / Hoàn thành */
 const PLAN_FILTERS = [
   {key:"Tất cả", label:"Tất cả"},
@@ -29,8 +35,26 @@ const PLAN_FILTERS = [
   {key:"Thầu", label:"Thầu", type:"Thầu"}
 ];
 function planIsDone(p){ return !!p._allDone; }
-/* TM (Phụ trách) hoặc SE của dự án – dùng để giới hạn những dự án nhân viên được thấy */
-function projectAssigned(p, name){ return !!name && (p.owner===name || p.se===name); }
+/* Tên nhân sự dùng trong dự án (PM/TM/AM/ACC gõ tay ở projectForm(), "Phụ trách" đầu việc…) nhiều khi là
+   tên viết tắt (vd "Lydk") khác với "Họ tên" đầy đủ lưu ở Cài đặt → Nhân sự (config/staff, S.staff) – từ
+   file Excel nhập vào thường chỉ có tên tài khoản/viết tắt. Nhân sự có thể khai thêm "Tên viết tắt"
+   (s.alias, Cài đặt → Nhân sự) để LIÊN KẾT 2 tên lại với nhau. canonStaffName(raw) trả về đúng "Họ tên"
+   đầy đủ nếu `raw` khớp alias của 1 nhân sự nào đó, không khớp gì thì trả nguyên `raw` (coi như đã là tên
+   chuẩn, hoặc tên tự do không quản lý được). Dùng ở những chỗ cần biết "đây có đúng là người X không"
+   (quyền xem/sửa dự án, Capacity/Workload, KPI…) qua `projectAssigned()`/`model.js`/`kpi-calc.js` – KHÔNG
+   dùng để đổi chữ hiển thị trên giao diện (bảng/thẻ dự án vẫn hiện nguyên tên đã gõ/nhập, không tự ý đổi
+   thành Họ tên đầy đủ). Khớp đúng bản sao phía máy chủ `canonStaffName()` (async, đọc CSDL) ở
+   `backend/server.js` – sửa 1 bên thì sửa cả 2, không chỉ chặn ở giao diện. */
+function canonStaffName(raw){
+  if(!raw) return raw;
+  const hit = (S.staff||[]).find(s=>s.alias && s.alias===raw);
+  return hit ? hit.name : raw;
+}
+/* TM (Phụ trách) của dự án – dùng để giới hạn những dự án nhân viên được thấy. Web này là web cho
+   Phòng Quản lý dự án (không phải Phòng Kỹ thuật cũ): không còn vai trò "SE" – PM là vai trò chính, các
+   bên khác (TM/AM/ACC) chỉ phối hợp. `p.se` đã bỏ khỏi mọi chỗ đọc/kiểm tra quyền (xem CLAUDE.md), vẫn
+   còn trong schema tài liệu cũ nhưng không còn ý nghĩa gì. */
+function projectAssigned(p, name){ return !!name && canonStaffName(p.owner)===name; }
 function planMatchFilter(p, key){
   const f = PLAN_FILTERS.find(x=>x.key===key) || PLAN_FILTERS[0];
   if(f.key==="Tất cả") return true;
@@ -42,6 +66,21 @@ const ST_ALL = ["Chưa bắt đầu","Đang làm","Đang vướng","Tạm dừng
 const ST_WEEK = ["Đang làm","Đang vướng","Tạm dừng","Hoàn thành","Hủy"];
 const OPEN = new Set(["Chưa bắt đầu","Đang làm","Đang vướng","Tạm dừng"]);
 const CAUSES = ["Khách hàng","Hãng","Hàng hóa / thiết bị","Cộng sự","Hệ thống","Thay đổi yêu cầu","Chờ quyết định"];
+/* Nhận diện "Mốc chính dự án" từ "No." (A/I/1/1.1…) + cảnh báo "Sắp đến hạn" – cấu hình chung cho cả hệ
+   thống (config/milestoneRule, chỉ trưởng phòng sửa – xem settingsMilestonePanel(), settings.js), dựa
+   đúng quy tắc đọc được từ file mẫu thật của phòng (xem CLAUDE.md "Bộ công thức sheet Report"):
+     - mode 1: chỉ chữ cái đơn (A/B/C…, LOẠI I/V/X vì đó là số La Mã) + số La Mã (I..XX).
+     - mode 2 (mặc định, khớp file mẫu): mode 1 + số nguyên cấp 1 (1/2/3…, loại 1.1/1.1.1…), CỘNG THÊM
+       giữ toàn bộ nhánh có chữ "THANH TOÁN" trong tên (ở bất kỳ cấp con nào) kể từ dòng hạng mục chữ cái
+       chứa chữ đó tới trước hạng mục chữ cái tiếp theo.
+     - mode 3: chỉ nhánh "THANH TOÁN" như trên (bỏ hẳn các mốc chữ cái/La Mã/số nguyên khác).
+   dueSoonDays: ngưỡng "Sắp đến hạn" (ngày) – thay cho số 14 cố định cũ trong model.js. */
+const MILESTONE_RULE_DEFAULT = {mode:2, dueSoonDays:14};
+const MILESTONE_RULE_MODES = [
+  [1, "Chỉ chữ cái + số La Mã", "Chỉ các dòng No. là 1 chữ cái (A, B, C…) hoặc số La Mã (I, II, III…)."],
+  [2, "+ số nguyên, giữ trọn nhánh Thanh toán", "Thêm các dòng No. là số nguyên cấp 1 (1, 2, 3…), và giữ nguyên toàn bộ nhánh có chữ “THANH TOÁN” dù ở cấp nào."],
+  [3, "Chỉ nhánh Thanh toán", "Chỉ lấy các dòng thuộc nhánh có chữ “THANH TOÁN” trong tên, bỏ mọi mốc khác."]
+];
 const QM_HINT = {1:"0,5–2 giờ",2:"2–8 giờ",3:"8–12 giờ",4:"12–24 giờ",5:"24–32 giờ"};
 const PT_HINT = {1:"Đơn giản",2:"Quen thuộc",3:"Cần chuyên môn",4:"Cần chuyên gia",5:"Chưa có tiền lệ"};
 /* Công thức Workload: quy Quy mô (bậc thời gian) ra số giờ đại diện thực tế (trung điểm khoảng giờ ở

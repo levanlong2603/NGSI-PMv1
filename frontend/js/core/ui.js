@@ -292,9 +292,21 @@ function openForm(cfg){
     else if(f.type==="seg") ctl = `<div class="seg-in" role="group" aria-label="${esc(f.label)}">${f.options.map(o=>`<button type="button" data-k="${f.key}" data-v="${esc(JSON.stringify(o[0]))}" aria-pressed="${JSON.stringify(o[0]??null)===JSON.stringify(v??null)}" ${f.disabled?"disabled":""}>${esc(o[1])}</button>`).join("")}</div>`;
     /* "images": ảnh dán (Ctrl+V) – vals[key] là mảng data URL; f.max = số ảnh tối đa (mặc định 4) */
     else if(f.type==="images") ctl = `<div id="${id}">${imgFieldHTML(v)}</div>`;
+    /* "search": như <select> nhưng gõ để lọc thay vì cuộn tìm trong danh sách dài – options PHẲNG
+       [[giá trị,nhãn],…] (không gom nhóm như "select"). Ô hiện chữ là input text độc lập (id+"_q"), giá trị
+       THẬT lưu ở input ẩn cùng id với field (để readInputs() đọc được y hệt các field khác, không cần sửa
+       riêng); xem dropdown `.search-dd` + phần xử lý input/focusin/focusout/click ở cuối openForm(). */
+    else if(f.type==="search"){
+      const opts = optsOverride[f.key] || f.options;
+      const cur = opts.find(o=>String(o[0])===String(v??""));
+      ctl = `<div class="search-field"><input type="text" class="inp" id="${id}_q" data-searchkey="${f.key}" autocomplete="off" placeholder="${esc(f.placeholder||"Gõ để tìm…")}" value="${esc(cur?cur[1]:"")}" ${dis}>
+        <input type="hidden" id="${id}" value="${esc(v??"")}">
+        <div class="search-dd" id="${id}_dd" data-key="${f.key}" hidden></div></div>`;
+    }
     /* "badge": không phải ô nhập, chỉ hiển thị tĩnh (vd số giờ còn lại cạnh ô nhập giờ) – dùng f.text, không đọc/ghi vals */
     else if(f.type==="badge") ctl = `<div class="field-badge"><span class="pill ${esc(f.tone||"info")}">${esc(f.text||"")}</span></div>`;
-    return `<div class="field" ${f.half?'data-half="1"':""} data-field="${f.key}">${f.type==="check"?"":`<label for="${id}">${esc(f.label)}${f.required?' <span style="color:var(--bad)">*</span>':""}</label>`}${ctl}${hint!==""?`<div class="hint" data-hint="${f.key}">${esc(hint)}</div>`:`<div class="hint" data-hint="${f.key}"></div>`}</div>`;
+    const labelFor = f.type==="search" ? id+"_q" : id;
+    return `<div class="field" ${f.half?'data-half="1"':""} data-field="${f.key}">${f.type==="check"?"":`<label for="${labelFor}">${esc(f.label)}${f.required?' <span style="color:var(--bad)">*</span>':""}</label>`}${ctl}${hint!==""?`<div class="hint" data-hint="${f.key}">${esc(hint)}</div>`:`<div class="hint" data-hint="${f.key}"></div>`}</div>`;
   };
   const body = () => {
     let out = cfg.info || ""; let buf = [];
@@ -318,6 +330,8 @@ function openForm(cfg){
     if(e.target.closest("[data-imgpick]")){ const inp = dlg.querySelector("[data-imgfile]"); if(inp) inp.click(); return; }
     const ix = e.target.closest("[data-imgdel]");
     if(ix){ const fi = cfg.fields.find(x=>x.type==="images"); if(fi){ vals[fi.key] = (vals[fi.key]||[]).filter((_, j) => j!==+ix.dataset.imgdel); dlg.querySelector("#f_"+fi.key).innerHTML = imgFieldHTML(vals[fi.key]); } return; }
+    const so = e.target.closest(".search-dd button[data-sv]");
+    if(so){ searchPick(so.closest(".search-dd").dataset.key, so.dataset.sv, so.dataset.sl); return; }
     if(e.target.closest("[data-save]")){
       readInputs();
       for(const f of cfg.fields){ if(f.required && (vals[f.key]==null || vals[f.key]==="")){ toast("Còn thiếu: "+f.label); return; } }
@@ -356,6 +370,65 @@ function openForm(cfg){
       const inp = e.target.closest && e.target.closest("[data-imgfile]"); if(!inp) return;
       const files = [...inp.files].filter(x => /^image\//.test(x.type)); inp.value = "";
       if(files.length) await addImages(files);
+    });
+  }
+  /* Ô "search" (gõ để lọc trong danh sách dài, thay <select> – vd "Đầu việc" ở Nhập theo tuần,
+     weekly-input.js): lọc theo chữ gõ (so nguyên chuỗi con, không phân biệt hoa/thường), tối đa 200 gợi ý
+     hiện cùng lúc. searchPick() dùng chung cho bấm chọn (click) lẫn Enter (chọn gợi ý đầu tiên đang hiện).
+     Rời khỏi ô (focusout) mà chưa bấm chọn gì thì trả lại đúng chữ của lựa chọn đang lưu (hoặc rỗng nếu
+     chưa chọn) – không để chữ gõ dở tự ý trở thành giá trị, vì giá trị thật luôn phải là 1 trong các options. */
+  const searchOptsOf = key => { const f = cfg.fields.find(x=>x.key===key); return f ? (optsOverride[key]||f.options||[]) : []; };
+  /* So KHÔNG dấu + không phân biệt hoa/thường (như slug(), utils.js) – không chỉ tiện (gõ không cần đúng
+     dấu) mà còn "chữa cháy" trường hợp bàn phím tiếng Việt (Unikey/Telex/VNI) gửi sự kiện input dồn dập lúc
+     ghép dấu khiến ký tự có dấu dễ gõ sai/thiếu giữa chừng – so không dấu vẫn ra đúng kết quả trong lúc gõ. */
+  const searchNorm = s => String(s??"").normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/đ/gi,"d").toLowerCase();
+  const searchRenderDD = (key, q) => {
+    const dd = dlg.querySelector("#f_"+key+"_dd"); if(!dd) return;
+    const nq = searchNorm(q).trim();
+    /* Chỉ hiện gợi ý khi đã gõ chữ gì đó – rỗng (vd vừa focus vào ô, chưa gõ gì) thì ẩn hẳn dropdown thay
+       vì đổ nguyên danh sách (có thể cả trăm dòng) ra ngay, đúng yêu cầu người dùng. */
+    if(!nq){ dd.hidden = true; dd.innerHTML = ""; return; }
+    const list = searchOptsOf(key).filter(o=>searchNorm(o[1]).includes(nq)).slice(0,200);
+    dd.innerHTML = list.length ? list.map(o=>`<button type="button" data-sv="${esc(o[0])}" data-sl="${esc(o[1])}">${esc(o[1])}</button>`).join("") : `<div class="search-dd-empty">Không tìm thấy</div>`;
+    dd.hidden = false;
+  };
+  const searchPick = (key, sv, sl) => {
+    vals[key] = sv;
+    const q = dlg.querySelector("#f_"+key+"_q"); if(q) q.value = sl;
+    /* Phải ghi cả vào input ẩn (id="f_"+key) chứ không chỉ "vals" trong bộ nhớ – readInputs() lúc bấm Lưu
+       đọc lại DOM từ chính input ẩn này (giống mọi field khác), không đụng tới "vals" đang giữ sẵn; thiếu
+       dòng này thì chọn xong vẫn báo "Còn thiếu" vì readInputs() ghi đè lại thành rỗng. */
+    const hid = dlg.querySelector("#f_"+key); if(hid) hid.value = sv;
+    const dd = dlg.querySelector("#f_"+key+"_dd"); if(dd){ dd.hidden = true; dd.innerHTML = ""; }
+    const f = cfg.fields.find(x=>x.key===key);
+    if(f && f.onChange) f.onChange(vals[key], api);
+    const hn = dlg.querySelector(`[data-hint="${key}"]`); if(f && hn && typeof f.hint==="function") hn.textContent = f.hint(vals[key], vals);
+  };
+  if(cfg.fields.some(f=>f.type==="search") && !cfg.readOnly){
+    dlg.addEventListener("input", e => { const inp = e.target.closest("[data-searchkey]"); if(inp) searchRenderDD(inp.dataset.searchkey, inp.value); });
+    /* Bàn phím tiếng Việt (Unikey/bộ gõ hệ thống…) ghép dấu qua composition – một số trình duyệt/bộ gõ chỉ
+       bắn "input" ở bước gõ ký tự gốc (chưa dấu) rồi lặng lẽ sửa giá trị khi dấu được ghép xong mà không
+       bắn lại "input", khiến danh sách gợi ý bị kẹt lại theo chữ CHƯA ghép dấu. "compositionend" luôn bắn
+       đúng lúc ghép dấu xong, dùng làm lưới an toàn lọc lại theo giá trị cuối cùng. */
+    dlg.addEventListener("compositionend", e => { const inp = e.target.closest("[data-searchkey]"); if(inp) searchRenderDD(inp.dataset.searchkey, inp.value); });
+    dlg.addEventListener("focusin", e => { const inp = e.target.closest("[data-searchkey]"); if(inp) searchRenderDD(inp.dataset.searchkey, inp.value); });
+    dlg.addEventListener("focusout", e => {
+      const inp = e.target.closest("[data-searchkey]"); if(!inp) return;
+      const key = inp.dataset.searchkey;
+      setTimeout(() => {
+        const dd = dlg.querySelector("#f_"+key+"_dd"); if(dd) dd.hidden = true;
+        const cur = searchOptsOf(key).find(o=>String(o[0])===String(vals[key]??""));
+        inp.value = cur ? cur[1] : "";
+      }, 150);
+    });
+    dlg.addEventListener("keydown", e => {
+      const inp = e.target.closest("[data-searchkey]"); if(!inp) return;
+      const key = inp.dataset.searchkey, dd = dlg.querySelector("#f_"+key+"_dd");
+      if(e.key==="Escape"){ if(dd && !dd.hidden){ dd.hidden = true; e.stopPropagation(); } return; }
+      if(e.key!=="Enter") return;
+      e.preventDefault();
+      const first = dd && dd.querySelector("button[data-sv]");
+      if(first) searchPick(key, first.dataset.sv, first.dataset.sl);
     });
   }
   layer.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click", close));

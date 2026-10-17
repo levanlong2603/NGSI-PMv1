@@ -76,6 +76,13 @@ const KPI_CALC = (() => {
      CSDL trả về theo thứ tự nào (chỉ ảnh hưởng khi 2 người cùng báo trạng thái khác nhau cho 1 đầu việc
      trong cùng tuần mới nhất). */
   function prepare(data){
+    /* Tên viết tắt (s.alias, Cài đặt → Nhân sự) khớp với Họ tên đầy đủ – xem canonStaffName() ở
+       constants.js (bản này tự có, không gọi được hàm bên đó vì kpi-calc.js còn chạy trên Node, không có
+       "S"). task.owner/collab/p.owner có thể lưu tên viết tắt (vd nhập từ Excel) – quy hết về Họ tên đầy
+       đủ NGAY KHI dựng ix.tasks, để compute()/work() so khớp đúng người bất kể owner lưu tên nào. Không
+       ảnh hưởng hiển thị: kpi.js chỉ đọc t.owner/t.doer như cờ true/false, không hiện lại chuỗi tên này. */
+    const aliasMap = new Map((data.staff||[]).filter(s=>s.alias).map(s=>[s.alias, s.name]));
+    const canon = raw => raw ? (aliasMap.get(raw) || raw) : raw;
     const cap = new Map((data.staff||[]).map(s => [s.name, Math.round((+s.hours||0)*(1-(+s.pct||0))*(+s.factor||1)*10)/10]));
     const docs = [...(data.weeks||[])].sort((a,b) => String(a.week).localeCompare(String(b.week)) || String(a.id||a._id||"").localeCompare(String(b.id||b._id||"")));
     const entries = [], latest = new Map(), doneWk = new Map();
@@ -92,10 +99,10 @@ const KPI_CALC = (() => {
       const k = p.id+"|"+t.id, le = latest.get(k);
       const status = le ? le.status : ((t.init && t.init.status) || "Chưa bắt đầu");
       const done = status==="Hoàn thành" ? (doneWk.get(k) || null) : null;
-      tasks.push({projectId:p.id, project:p.name, id:t.id, dv:t.dv, owner:t.owner||"", pt:t.pt??null, deadline:t.deadline||null,
+      tasks.push({projectId:p.id, project:p.name, id:t.id, dv:t.dv, owner:canon(t.owner||""), pt:t.pt??null, deadline:t.deadline||null,
         status, done, ontime: done && t.deadline ? done <= t.deadline : null, cl: t.eval && t.eval.cl!=null ? t.eval.cl : null,
         /* các trường dưới chỉ phục vụ work() (liệt kê dự án/đầu việc của 1 người) – compute() không đọc tới */
-        collab:t.collab||"", ptype:p.type||"", difficulty:p.difficulty??null, pOwner:p.owner||"", pSe:p.se||"",
+        collab:canon(t.collab||""), ptype:p.type||"", difficulty:p.difficulty??null, pOwner:canon(p.owner||""),
         dat:(t.eval && t.eval.dat) || null, tc: t.eval && t.eval.tc!=null ? t.eval.tc : null});
     }
     return {cap, entries, tasks};
@@ -154,7 +161,7 @@ const KPI_CALC = (() => {
       const doneIn = !!(t.done && wset.has(t.done));
       if(!a && !((isOwner || isCollab) && doneIn)) continue;
       if(!groups.has(t.projectId)) groups.set(t.projectId, {projectId:t.projectId, project:t.project, type:t.ptype, difficulty:t.difficulty,
-        pRole: t.pOwner===name ? "TM" : t.pSe===name ? "SE" : "", tasks:[]});
+        pRole: t.pOwner===name ? "TM" : "", tasks:[]});
       groups.get(t.projectId).tasks.push({id:t.id, dv:t.dv, owner:isOwner, doer:isCollab || !!a, nEntries:a ? a.n : 0,
         hours: a && a.hasHours ? Math.round(a.hours*10)/10 : null, wl: a ? Math.round(a.wl*10)/10 : null,
         wlTotal: c ? Math.round(c.wl*10)/10 : null, nWeeks: wks.length, firstWeek: wks[0] || null, lastWeek: wks[wks.length-1] || null,

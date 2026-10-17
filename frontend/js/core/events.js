@@ -14,7 +14,8 @@ main.addEventListener("click", e => {
   if(a==="godash"){ S.view="dash"; S.projTab="overview"; store("view","dash"); render(); return; }
   if(a==="wk"){ const d=+t.dataset.d; S.week = d===0 ? mondayOf(todayISO()) : addDays(S.week, d); render(); }
   else if(a==="tf"){ S.typeFilter=t.dataset.t; render(); }
-  else if(a==="goplan"){ S.planSel=t.dataset.id; S.typeFilter="Tất cả"; S.view="dash"; S.projTab="plan"; store("view","dash"); render(); }
+  else if(a==="goplan"){ S.planSel=t.dataset.id; S.ovDetailId=t.dataset.id; S.view="dash"; S.projTab="overview"; store("view","dash"); render(); }
+  else if(a==="ovback"){ S.ovDetailId=null; render(); }
   else if(a==="addentry") entryForm(null);
   else if(a==="editentry"){ const person=t.dataset.person||S.me; const doc=weekDoc(S.week,person); const en=doc&&(doc.entries||[]).find(x=>x.id===t.dataset.id); if(en) entryForm(en, person); }
   else if(a==="copyprev") copyPrev();

@@ -53,8 +53,8 @@ function startSession(user){
   const db = makeServerDb(); S.db = db; S.conn = "on"; S.loaded = false; setConn();
   const onErr = () => {};
   db.collection("config").onSnapshot(snap => {
-    S.staff = []; S.catalog = []; S.help = "";
-    for(const d of snap.docs){ const b=d.data()||{}; if(d.id==="staff") S.staff=b.list||[]; if(d.id==="catalog") S.catalog=b.list||[]; if(d.id==="help") S.help=b.html||""; }
+    S.staff = []; S.catalog = []; S.help = ""; S.milestoneRule = {...MILESTONE_RULE_DEFAULT};
+    for(const d of snap.docs){ const b=d.data()||{}; if(d.id==="staff") S.staff=b.list||[]; if(d.id==="catalog") S.catalog=b.list||[]; if(d.id==="help") S.help=b.html||""; if(d.id==="milestoneRule") S.milestoneRule={...MILESTONE_RULE_DEFAULT, ...b}; }
     S.loaded = true; schedule(); }, onErr);
   db.collection("projects").onSnapshot(snap => { S.projects = snap.docs.map(d=>({...d.data(), id:d.id})); S.loaded=true; schedule(); }, onErr);
   const cutoff = addDays(mondayOf(todayISO()), -7*156);
@@ -104,7 +104,7 @@ function hideLogin(){ const w = document.getElementById("loginWrap"); if(w) w.re
 async function logout(msg){
   stopIdleTimer();
   try{ await fetch("/api/logout", {method:"POST", credentials:"same-origin"}); }catch(e){}
-  S.user = null; S.staff=[]; S.catalog=[]; S.projects=[]; S.weeks=[]; S.feedback=[]; S.fbReplies=[]; S.loaded=false;
+  S.user = null; S.staff=[]; S.catalog=[]; S.projects=[]; S.weeks=[]; S.feedback=[]; S.fbReplies=[]; S.milestoneRule={...MILESTONE_RULE_DEFAULT}; S.loaded=false;
   document.getElementById("userBox").hidden = true; showLogin(msg);
 }
 /* ---------- tự đăng xuất khi không thao tác ---------- */

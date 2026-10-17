@@ -270,12 +270,12 @@ function rpBuildOverview(){
     const open = p._tasks.filter(t=>OPEN.has(t.status));
     const noted = open.filter(t=>t.note).sort((a,b)=>(b.ms||0)-(a.ms||0))[0];
     if(noted) return `[${noted.id}] ${noted.note}`;
-    const lateP1 = open.filter(t=>t.pr==="P1" && t.warns.some(w=>w[1]==="Quá hạn")).sort((a,b)=>String(a.deadline||"9").localeCompare(String(b.deadline||"9")))[0];
-    if(lateP1) return `[${lateP1.id}] ${planShortName(lateP1.dv)} – quá hạn ${dm(lateP1.deadline)}, ưu tiên P1`;
+    const lateP1 = open.filter(t=>t.pr==="Cao" && t.warns.some(w=>w[1]==="Quá hạn")).sort((a,b)=>String(a.deadline||"9").localeCompare(String(b.deadline||"9")))[0];
+    if(lateP1) return `[${lateP1.id}] ${planShortName(lateP1.dv)} – quá hạn ${dm(lateP1.deadline)}, ưu tiên Cao`;
     return "";
   };
   const projRows = running.map(p => ({
-    name:p.name, type:p.type, owner:p.owner||"–", se:p.se||"–", status:statusOf(p), prog:p._prog,
+    name:p.name, type:p.type, owner:p.owner||"–", status:statusOf(p), prog:p._prog,
     late:p._late, soon:p._soon, done:doneInPeriod(p), assess:assessOf(p), riskText:biggestRisk(p),
     milestones:p.milestones||"", progress:p.progress||"", situation:p.situation||"", proposal:p.proposal||""
   })).sort((a,b)=>(b.assess.bad-a.assess.bad) || b.late-a.late);
@@ -284,8 +284,8 @@ function rpBuildOverview(){
 function rpBuildOverviewExport(){
   const ov = rpBuildOverview();
   const colsSum = ["Chỉ số","Giá trị"], rowsSum = ov.stats.map(s=>({"Chỉ số":s.l, "Giá trị":String(s.v)}));
-  const colsProj = ["STT","Tên dự án","Người phụ trách","SE","Mốc HĐ","Tiến độ hiện tại","Vướng mắc","Đề xuất"];
-  const rowsProj = ov.projRows.map((p,i) => ({"STT":i+1, "Tên dự án":p.name, "Người phụ trách":p.owner, "SE":p.se,
+  const colsProj = ["STT","Tên dự án","Người phụ trách","Mốc HĐ","Tiến độ hiện tại","Vướng mắc","Đề xuất"];
+  const rowsProj = ov.projRows.map((p,i) => ({"STT":i+1, "Tên dự án":p.name, "Người phụ trách":p.owner,
     "Mốc HĐ":p.milestones, "Tiến độ hiện tại":p.progress, "Vướng mắc":p.situation, "Đề xuất":p.proposal}));
   const title = `Báo cáo tổng hợp dự án – ${ov.P.label}`;
   return {
@@ -489,17 +489,17 @@ function rpOverviewContent(ov){
     <div class="band" style="margin-bottom:20px">${ov.stats.map(s=>`<div class="stat ${s.bad?"bad":""}"><div class="v">${esc(String(s.v))}</div><div class="l">${esc(s.l)}</div></div>`).join("")}</div>
     <div class="rp-sec rp-sec-xl">
       <div class="tbl-wrap"><table style="table-layout:fixed"><thead><tr>
-        <th style="width:4%">STT</th><th style="width:14%">Tên dự án</th><th style="width:11%">Người phụ trách</th><th style="width:9%">SE</th>
-        <th style="width:15%">Mốc HĐ</th><th style="width:16%">Tiến độ hiện tại</th><th style="width:15.5%">Vướng mắc</th><th style="width:15.5%">Đề xuất</th>
+        <th style="width:4%">STT</th><th style="width:16%">Tên dự án</th><th style="width:14%">Người phụ trách</th>
+        <th style="width:17%">Mốc HĐ</th><th style="width:18%">Tiến độ hiện tại</th><th style="width:15.5%">Vướng mắc</th><th style="width:15.5%">Đề xuất</th>
       </tr></thead>
       <tbody>${ov.projRows.length ? ov.projRows.map((p,i)=>`<tr>
         <td class="small muted">${i+1}</td>
         <td class="cell-main">${esc(p.name)}</td>
-        <td>${esc(p.owner)}</td><td>${esc(p.se)}</td>
+        <td>${esc(p.owner)}</td>
         <td class="small" style="white-space:pre-wrap">${p.milestones?esc(p.milestones):'<span class="muted">–</span>'}</td>
         <td class="small" style="white-space:pre-wrap">${p.progress?esc(p.progress):'<span class="muted">–</span>'}</td>
         <td class="small" style="white-space:pre-wrap">${p.situation?esc(p.situation):'<span class="muted">–</span>'}</td>
-        <td class="small" style="white-space:pre-wrap">${p.proposal?esc(p.proposal):'<span class="muted">–</span>'}</td></tr>`).join("") : `<tr><td colspan="8" class="muted" style="padding:14px">Không có dự án đang chạy phù hợp.</td></tr>`}</tbody></table></div></div>
+        <td class="small" style="white-space:pre-wrap">${p.proposal?esc(p.proposal):'<span class="muted">–</span>'}</td></tr>`).join("") : `<tr><td colspan="7" class="muted" style="padding:14px">Không có dự án đang chạy phù hợp.</td></tr>`}</tbody></table></div></div>
   </div></section>`;
   return h;
 }

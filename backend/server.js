@@ -204,8 +204,22 @@ function mondayOfToday() {
   d.setDate(d.getDate() - wd);
   return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
 }
+/* Tên nhân sự lưu trong dự án (projects.owner – PM/TM gõ tay ở client, thường suy từ "tm"/"pm" nhập ở
+   projectForm()) có thể là tên viết tắt (vd "Lydk") khác với Họ tên đầy đủ (user.staff_name, lấy từ
+   config/staff lúc gán tài khoản). Nhân sự khai thêm "Tên viết tắt" (s.alias, Cài đặt → Nhân sự) để LIÊN
+   KẾT 2 tên – canonStaffName() tra config/staff, trả về đúng Họ tên đầy đủ nếu raw khớp alias của ai đó,
+   không khớp thì trả nguyên raw. Khớp đúng bản sao phía trình duyệt canonStaffName() ở
+   frontend/js/core/constants.js – sửa 1 bên thì sửa cả 2. Đọc CSDL mỗi lần gọi (không cache) vì đây là route
+   ghi/xoá, không phải đường nóng gọi liên tục; đổi "Tên viết tắt" có hiệu lực ngay, không cần khởi động lại. */
+async function canonStaffName(raw) {
+  if (!raw) return raw;
+  const stRaw = await store.getDoc("config/staff");
+  const staff = stRaw ? (JSON.parse(stRaw).list || []) : [];
+  const hit = staff.find(s => s.alias && s.alias === raw);
+  return hit ? hit.name : raw;
+}
 /* op: "write" (PUT, gồm cả thêm/sửa/xoá đầu việc bên trong) | "delete" (DELETE, xoá cả dự án) */
-function canWrite(user, coll, id, body, existing, op = "write") {
+async function canWrite(user, coll, id, body, existing, op = "write") {
   const rule = RULES[coll];
   /* Góp ý/phản hồi của người khác: trưởng phòng/phó phòng KHÔNG sửa nội dung hay xoá được – chỉ người viết. Ngoại lệ
      duy nhất: trưởng phòng/phó phòng đổi được TRẠNG THÁI XỬ LÝ của góp ý (loại/nội dung/ảnh phải giữ nguyên).
@@ -221,8 +235,8 @@ function canWrite(user, coll, id, body, existing, op = "write") {
   if (rule === "own-project") {
     if (!existing) return false; // dự án mới chỉ trưởng phòng tạo được
     if (existing.created_by === user.username) return true;
-    // TM (phụ trách) hoặc SE của dự án: được sửa dự án và đầu việc, nhưng KHÔNG được xoá cả dự án
-    if (op === "write" && user.staff_name && (existing.owner === user.staff_name || existing.se === user.staff_name)) return true;
+    // TM (phụ trách) của dự án: được sửa dự án và đầu việc, nhưng KHÔNG được xoá cả dự án
+    if (op === "write" && user.staff_name && (await canonStaffName(existing.owner)) === user.staff_name) return true;
     return false;
   }
   if (rule === "own") {
@@ -249,7 +263,7 @@ app.put("/api/doc/:coll/:id", auth, A(async (req, res) => {
   const p = `${coll}/${id}`;
   const ex = await store.getDoc(p);
   const exBody = ex && JSON.parse(ex);
-  if (!canWrite(req.user, coll, id, body, exBody, "write")) return res.status(403).json({ error: "Bạn không có quyền sửa phần này" });
+  if (!(await canWrite(req.user, coll, id, body, exBody, "write"))) return res.status(403).json({ error: "Bạn không có quyền sửa phần này" });
   if (coll === "projects") {
     body.created_by = exBody ? (exBody.created_by ?? null) : req.user.username;
     // Đánh giá khi hoàn thành (task.eval) và Ghi chú của trưởng phòng (task.note) chỉ trưởng phòng
@@ -313,8 +327,8 @@ app.patch("/api/doc/projects/:id/task-pt", auth, A(async (req, res) => {
   if (!task) return res.status(404).json({ error: "Không tìm thấy đầu việc" });
   const u = req.user;
   const allowed = FULL_ROLES.has(u.role) || body.created_by === u.username
-    || (u.staff_name && (body.owner === u.staff_name || body.se === u.staff_name))
-    || (u.staff_name && (task.owner === u.staff_name || task.collab === u.staff_name));
+    || (u.staff_name && (await canonStaffName(body.owner)) === u.staff_name)
+    || (u.staff_name && ((await canonStaffName(task.owner)) === u.staff_name || (await canonStaffName(task.collab)) === u.staff_name));
   if (!allowed) return res.status(403).json({ error: "Bạn không có quyền sửa đầu việc này" });
   task.pt = pt;
   await store.upsertDoc(p, "projects", id, JSON.stringify(body), u.username);
@@ -349,7 +363,7 @@ app.delete("/api/doc/:coll/:id", auth, A(async (req, res) => {
   const p = `${coll}/${id}`;
   const ex = await store.getDoc(p);
   if (!ex) return res.status(204).end();
-  if (!canWrite(req.user, coll, id, null, JSON.parse(ex), "delete")) return res.status(403).json({ error: "Bạn không có quyền xoá phần này" });
+  if (!(await canWrite(req.user, coll, id, null, JSON.parse(ex), "delete"))) return res.status(403).json({ error: "Bạn không có quyền xoá phần này" });
   await store.deleteDoc(p);
   audit(req.user, "delete", p); broadcast(coll);
   if (coll === "feedback") { // xoá góp ý thì xoá luôn các phản hồi của nó, tránh phản hồi mồ côi

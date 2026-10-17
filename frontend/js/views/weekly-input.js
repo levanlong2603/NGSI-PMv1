@@ -134,9 +134,12 @@ function entryForm(entry, person){
   const otherWl = M.entries.filter(x=>x.person===who && x.week===S.week && x.id!==e.id && x.status!=="Hủy" && x.wl!=null).reduce((a,x)=>a+x.wl,0);
   const remainH = Math.max(0, Math.round((stH.cap-totalWl)*10)/10);
   const budgetH = Math.max(0, Math.round((stH.cap-otherWl)*10)/10);
-  /* Nhân viên chỉ chọn được dự án mình là TM/SE, hoặc có đầu việc được giao/phối hợp; trưởng phòng không giới hạn.
-     Ẩn dự án đã hoàn thành 100%, trừ khi đó là dự án của dòng đang sửa (giữ lại để không mất dữ liệu) */
-  const assigned = p => S.canEdit || projectAssigned(p, who) || (p.tasks||[]).some(t=>t.owner===who || t.collab===who);
+  /* Nhân viên chỉ chọn được dự án mình là TM, hoặc có đầu việc được giao/phối hợp; trưởng phòng không giới
+     hạn. Ẩn dự án đã hoàn thành 100%, trừ khi đó là dự án của dòng đang sửa (giữ lại để không mất dữ liệu).
+     canonStaffName(): t.owner/t.collab có thể là tên viết tắt (vd nhập từ Excel) – quy về Họ tên đầy đủ
+     trước khi so, không thì nhân viên không thấy được dự án/đầu việc của chính mình nếu dự án lưu tên viết
+     tắt (xem canonStaffName(), constants.js). */
+  const assigned = p => S.canEdit || projectAssigned(p, who) || (p.tasks||[]).some(t=>canonStaffName(t.owner)===who || canonStaffName(t.collab)===who);
   /* Gom theo loại dự án (Triển khai/Thầu/Nội bộ) bằng optgroup, để phân biệt rõ Thầu với dự án triển khai
      thay vì liệt kê lẫn lộn một danh sách phẳng. */
   const projOpts = (() => {
@@ -145,18 +148,30 @@ function entryForm(entry, person){
     for(const p of list){ if(!byType.has(p.type)) byType.set(p.type, []); byType.get(p.type).push([p.id, p.name+(planIsDone(p)?" (đã hoàn thành)":"")]); }
     return TYPES.filter(t=>byType.has(t)).map(t=>({group:t, options:byType.get(t)}));
   })();
-  /* Xem được tất cả đầu việc của dự án (kể cả đã xong/huỷ), gom theo hạng mục */
+  /* Đầu việc của dự án – ô "search" (gõ để lọc, core/ui.js) thay cho <select> gom nhóm cũ: dự án thật có
+     thể cả trăm đầu việc (xem file mẫu Excel của phòng), cuộn tìm trong <select> rất khó. Danh sách PHẲNG
+     (bỏ gom theo hạng mục), nhãn mỗi dòng có đủ đường dẫn phân cấp "chữ cái.La Mã.số" (vd "E.V.1. Đổ tải",
+     "E.V.1.1. Cấu hình dịch vụ") để không mất ngữ cảnh dù không còn gom nhóm – duyệt p._tasks ĐÚNG THỨ TỰ
+     lưu để biết đang ở dưới hạng mục chữ cái/La Mã nào (giống cách model.js tính t.phase, dùng lại
+     msLetterNo()/msRomanNo() chứ không tự suy luận riêng): gặp dòng chữ cái đơn → reset về đúng chữ đó,
+     không còn La Mã; gặp dòng La Mã → nối thêm La Mã vào sau chữ cái; dòng số thường/thập phân → nối thêm
+     chính "No." của nó vào cuối. SẮP XẾP ưu tiên đầu việc CHƯA HOÀN THÀNH (trạng thái mở, OPEN) lên trước –
+     đúng thứ tự PM thường cần nhập trong tuần – rồi mới tới đầu việc đã Hoàn thành/Hủy, giữ nguyên thứ tự
+     gốc trong mỗi nhóm (sort ổn định) – phải tính đường dẫn TRƯỚC khi sắp lại, vì 2 tracker chữ cái/La Mã
+     chỉ đúng khi duyệt theo thứ tự lưu gốc. */
   const taskOpts = (pid, keepId) => {
     const p = M.pById.get(pid); if(!p) return [];
-    const order = new Map(p._phases.map((ph,i)=>[ph.code,i]));
-    const groups = new Map();
-    for(const t of p._tasks){
-      const code = t.phase||"";
-      if(!groups.has(code)) groups.set(code, {code, name:(p._phases.find(ph=>ph.code===code)||{}).name||"", items:[]});
-      groups.get(code).items.push(t);
-    }
-    return [...groups.values()].sort((a,b)=>(order.get(a.code)??999)-(order.get(b.code)??999) || a.code.localeCompare(b.code))
-      .map(g => ({group:(g.code?g.code+". ":"")+(g.name||"Khác"), options:g.items.map(t=>[t.id, planShortName(t.dv)+(OPEN.has(t.status)?"":" ("+t.status+")")])}));
+    let curLetter = "", curRoman = "";
+    const list = p._tasks.map(t => {
+      const no = String(t.no||"").trim();
+      let path;
+      if(msLetterNo(no)){ curLetter = no.toUpperCase(); curRoman = ""; path = curLetter; }
+      else if(msRomanNo(no)){ curRoman = no.toUpperCase(); path = [curLetter, curRoman].filter(Boolean).join("."); }
+      else path = [curLetter, curRoman, no].filter(Boolean).join(".");
+      return {t, open:OPEN.has(t.status), path};
+    });
+    list.sort((a,b) => (a.open===b.open?0:a.open?-1:1));
+    return list.map(({t, path}) => [t.id, (path?path+". ":"")+planShortName(t.dv)+(OPEN.has(t.status)?"":" ("+t.status+")")]);
   };
   openForm({
     title: isNew ? "Thêm việc trong tuần" : "Sửa việc trong tuần",
@@ -164,7 +179,7 @@ function entryForm(entry, person){
     values: e,
     fields: [
       {key:"projectId", label:"Dự án", type:"select", options:projOpts, required:true, onChange:(v,f)=>{ f.setOptions("taskId", taskOpts(v)); }},
-      {key:"taskId", label:"Đầu việc (theo kế hoạch của dự án)", type:"select", options:taskOpts(e.projectId, e.taskId), required:true},
+      {key:"taskId", label:"Đầu việc (theo kế hoạch của dự án)", type:"search", placeholder:"Gõ tên đầu việc để tìm…", options:taskOpts(e.projectId, e.taskId), required:true},
       {key:"work", label:"Việc đã làm trong tuần", type:"textarea"},
       {key:"qm", label:"Quy mô (ước lượng, chỉ để tham khảo)", type:"seg", options:[1,2,3,4,5].map(n=>[n,String(n)]), required:true, half:true,
         /* Chỉ để ước lượng/tham khảo – không tham gia công thức tính tải nữa (xem hours bên dưới). */
