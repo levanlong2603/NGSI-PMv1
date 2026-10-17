@@ -88,7 +88,12 @@ const PT_HINT = {1:"Đơn giản",2:"Quen thuộc",3:"Cần chuyên môn",4:"C�
    settings.js) ra đúng % tải thực tế. Độ phức tạp đầu việc (không phải "Độ khó dự án") là yếu tố duy nhất
    cộng thêm vào Quy mô; workload sau đó còn được chia cho Hệ số năng lực người phụ trách (xem model.js). */
 const QM_HOURS = {1:1.25, 2:5, 3:10, 4:18, 5:28};
-const PT_MULT = {1:0.8, 2:0.9, 3:1.1, 4:1.3, 5:1.5};
+/* Hệ số Độ phức tạp: 0,8/1/1,2/1,5/2 (khớp thang "Hệ số năng lực" nhân sự, settings.js – cùng 5 cấp, cùng
+   dãy số, cho dễ so sánh) – GIỮ NGUYÊN chú thích PT_HINT ở trên (Đơn giản…Chưa có tiền lệ), chỉ đổi con số
+   nhân. Không cần script chuyển đổi dữ liệu: task.pt/e.pt chỉ lưu CẤP ĐỘ (1–5), tra số nhân thật qua bảng
+   này mỗi lần tính (wlOf() dưới, model.js, kpi-calc.js) – không như staff.factor lưu thẳng giá trị số nên
+   phải migrate riêng (xem CLAUDE.md). */
+const PT_MULT = {1:0.8, 2:1, 3:1.2, 4:1.5, 5:2};
 /* Thiếu Độ phức tạp (cả theo kế hoạch lẫn danh mục chuẩn đều không có) → coi như hệ số 1 (trung tính),
    không chặn tính workload; Quy mô vẫn là trường bắt buộc nên thiếu qm thì không tính được (null). */
 function wlOf(qm, pt){

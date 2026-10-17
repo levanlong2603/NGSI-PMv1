@@ -190,7 +190,7 @@ function entryForm(entry, person){
         hint:(v,vals)=>{
           const mult = v ? PT_MULT[v] : 1;
           const base = v ? `${PT_HINT[v]} (×${fmt1(mult)})` : "Mặc định, không điều chỉnh (×1)";
-          return vals.hours ? `${base} — ${fmt1(vals.hours)}h × ${fmt1(mult)} = ${fmt1(Math.round(vals.hours*mult*10)/10)}h tính vào tải tuần.` : base;
+          return vals.hours ? `${base} — ${fmt1(vals.hours)} điểm × ${fmt1(mult)} = ${fmt1(Math.round(vals.hours*mult*10)/10)} điểm tính vào tải tuần.` : base;
         }},
       {key:"status", label:"Trạng thái", type:"seg", options:ST_WEEK.map(s=>[s,s])},
       /* Ma sát = chọn cả mức độ lẫn nguyên nhân cùng lúc (2 ô cạnh nhau), tách hẳn khỏi "Vướng mắc / cần

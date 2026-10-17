@@ -19,7 +19,7 @@ function viewSettings(){
   h += `<section class="panel" style="margin-bottom:18px"><div class="panel-h"><h2>Nhân sự & capacity</h2>${ro?"":'<button class="btn primary" data-act="addstaff">+ Nhân sự</button>'}</div>
     <div class="tbl-wrap"><table style="table-layout:fixed"><thead><tr><th style="width:24%">Họ tên</th><th style="width:13%; text-align:center">Giờ / tuần</th><th style="width:15%; text-align:center">% trừ họp, phát sinh</th><th style="width:14%; text-align:center">Kinh nghiệm (năm)</th><th style="width:16%; text-align:center">Hệ số năng lực</th><th style="width:18%; text-align:center">Capacity (điểm/tuần)</th></tr></thead><tbody>
     ${M.staff.map((s,i)=>`<tr class="${ro?"":"click"}" data-act="${ro?"":"editstaff"}" data-i="${i}" tabindex="0"><td class="cell-main">${esc(s.name)}${s.alias?` <span class="pill mute" title="Tên viết tắt dùng trong dự án">${esc(s.alias)}</span>`:""}${s.title?`<div class="small muted">${esc(s.title)}</div>`:""}</td><td style="text-align:center">${s.hours}</td><td style="text-align:center">${Math.round(s.pct*100)}%</td><td style="text-align:center">${s.years||"–"}</td><td style="text-align:center">${fmt1(s.factor)}</td><td style="text-align:center; font-weight:600">${fmt1(s.cap)}</td></tr>`).join("")||'<tr><td colspan="6" class="muted">Chưa có nhân sự.</td></tr>'}
-    </tbody></table></div><div class="panel-b small muted">Capacity = Giờ/tuần × (1 − % họp, phát sinh) × Hệ số năng lực. Hệ số năng lực theo kinh nghiệm (gợi ý, trưởng phòng tự chọn): &lt;1 năm → 1 · 1–2 năm → 2 · 2–3 năm → 3 · ≥3 năm → 4.</div></section>`;
+    </tbody></table></div><div class="panel-b small muted">Capacity = Giờ/tuần × (1 − % họp, phát sinh) × Hệ số năng lực. Hệ số năng lực theo 5 cấp độ thành thạo (0,8–2,0, gợi ý theo kinh nghiệm, trưởng phòng tự chọn) – xem chi tiết khi sửa từng nhân sự.</div></section>`;
   h += catFlatTable(ro);
   h += milestoneRulePanel(ro);
   return h;
@@ -101,12 +101,27 @@ function suggestAlias(fullName){
   const initials = parts.slice(0,-1).map(w=>strip(w)[0].toLowerCase()).join("");
   return first + initials;
 }
+/* Hệ số năng lực: 5 cấp độ thành thạo (theo khung đánh giá năng lực chung của phòng), dãy số 0,8/1/1,2/1,5/2
+   (FACTOR_LEVELS – giá trị lưu thẳng vào staff.factor, nhân trực tiếp vào Capacity ở derive(), model.js –
+   giống hệt cách p.difficulty lưu thẳng giá trị 0,8/1/1,3/1,6 ở plan.js, không qua bảng tra riêng). Khớp
+   đúng dãy số của PT_MULT (Độ phức tạp đầu việc, constants.js) theo yêu cầu người dùng, dễ so sánh 2 thang.
+   TRƯỚC ĐÂY chỉ có 4 nấc 1/2/3/4 dùng thẳng làm hệ số nhân (tức nhân sự "hệ số 4" có Capacity gấp 4 lần –
+   không hợp lý, chưa từng rà lại). Kèm chú thích mô tả từng cấp (khung năng lực chung: Biết/Cơ bản →
+   Chuyên gia). Dữ liệu cũ (factor cũ 1–4) cần migrate riêng – xem CLAUDE.md. */
+const FACTOR_LEVELS = [
+  [0.8, "Cấp 1 – Biết / Cơ bản", "Cần hướng dẫn"],
+  [1, "Cấp 2 – Hiểu / Vận dụng", "Làm được việc quen thuộc"],
+  [1.2, "Cấp 3 – Thành thạo", "Làm độc lập, xử lý được sự cố phát sinh"],
+  [1.5, "Cấp 4 – Nâng cao", "Cải tiến quy trình, hướng dẫn người khác"],
+  [2, "Cấp 5 – Chuyên gia", "Tầm nhìn chiến lược, chuyên gia đầu ngành"],
+];
 function staffForm(i){
-  const isNew = i==null; const s = isNew ? {name:"", alias:"", title:"", hours:40, pct:0.2, factor:1.0, years:0} : {...S.staff[i]};
+  const isNew = i==null; const s = isNew ? {name:"", alias:"", title:"", hours:40, pct:0.2, factor:1.2, years:0} : {...S.staff[i]};
   const factorHint = (val,vals) => {
+    const lv = FACTOR_LEVELS.find(l=>l[0]===+val);
     const y = +vals.years||0;
-    const sug = y<1?1:y<2?2:y<3?3:4;
-    return `Gợi ý theo ${y||0} năm kinh nghiệm: ${sug}`;
+    const sug = y<1?0.8:y<2?1:y<4?1.2:y<6?1.5:2;
+    return (lv?`${lv[1]}: ${lv[2]}.`:"") + ` Gợi ý theo ${y||0} năm kinh nghiệm: ${sug}`;
   };
   openForm({title:isNew?"Thêm nhân sự":"Sửa nhân sự", values:{...s, pctV:Math.round(s.pct*100)},
     fields:[
@@ -126,10 +141,10 @@ function staffForm(i){
       {key:"title", label:"Chức danh (chỉ để tham khảo, dùng cho KPI & Năng lực)", type:"text", hint:()=>"Vd: Network Engineer, Security Engineer…"},
       {key:"hours", label:"Giờ làm / tuần", type:"number", half:true}, {key:"pctV", label:"% trừ họp, phát sinh", type:"number", half:true, hint:()=>"Khuyến nghị 15–25"},
       {key:"years", label:"Số năm kinh nghiệm (chỉ để tham khảo)", type:"number", half:true, hint:()=>"Dùng để gợi ý hệ số năng lực bên cạnh"},
-      {key:"factor", label:"Hệ số năng lực", type:"seg", options:[[1,"1"],[2,"2"],[3,"3"],[4,"4"]], half:true, hint:factorHint}],
+      {key:"factor", label:"Hệ số năng lực", type:"seg", options:FACTOR_LEVELS.map(l=>[l[0],fmt1(l[0])]), half:true, hint:factorHint}],
     onSave: async x => {
       if(!x.name.trim()) throw new Error("Nhập họ tên.");
-      const list=[...S.staff]; const row={name:x.name.trim(), alias:(x.alias||"").trim(), title:x.title||"", hours:+x.hours||40, pct:(+x.pctV||0)/100, factor:+x.factor||1, years:+x.years||0};
+      const list=[...S.staff]; const row={name:x.name.trim(), alias:(x.alias||"").trim(), title:x.title||"", hours:+x.hours||40, pct:(+x.pctV||0)/100, factor:+x.factor||1.2, years:+x.years||0};
       if(isNew) list.push(row); else list[i]=row;
       await write("config/staff",{list}); toast("Đã lưu nhân sự");
     },

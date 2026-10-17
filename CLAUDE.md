@@ -248,6 +248,29 @@ nút `+`/`✕` mỗi dòng (`ACTIONS["addcatrow"]`/`["delcatrow"]`) chèn/xoá n
   trước khi có ô giờ thật) đọc lại qua `wlOf(e.qm, e.pt)` để không đổi dữ liệu lịch sử.
 - `Capacity (giờ/tuần) = Giờ/tuần × (1 − % họp, phát sinh) × Hệ số năng lực` (`model.js`, `derive()`).
   Hệ số năng lực **chỉ nhân ở Capacity**, Workload không chia lại cho hệ số (tránh tính trùng).
+  **`staff.factor` (Hệ số năng lực) đổi từ 4 nấc `1/2/3/4` sang 5 cấp độ `0,8/1/1,2/1,5/2`** (chốt sau 2
+  lần chỉnh – lần đầu thử dãy đều `0,8/1,1/1,4/1,7/2,0`, người dùng yêu cầu đổi lại đúng dãy `0,8/1/1,2/1,5/2`
+  cho khớp luôn cả `PT_MULT` bên dưới) – `FACTOR_LEVELS` (`settings.js`, cạnh `staffForm()`), mỗi mức kèm
+  mô tả theo khung đánh giá năng lực chung của phòng (Cấp 1 Biết/Cơ bản → Cấp 5 Chuyên gia, hiện trong
+  `hint` khi sửa nhân sự). Lưu thẳng giá trị số vào `staff.factor`, nhân trực tiếp vào Capacity – giống hệt
+  cách `p.difficulty` lưu thẳng giá trị ở `projectForm()` (`plan.js`), không qua bảng tra riêng. **Lý do
+  đổi**: thang cũ dùng thẳng 1–4 làm hệ số nhân nghĩa là nhân sự "hệ số 4" có Capacity gấp 4 lần người "hệ
+  số 1" – quá lệch thực tế, chưa từng rà lại từ khi có trường này. Gợi ý theo số năm kinh nghiệm (`years`)
+  cũng đổi ngưỡng tương ứng: &lt;1 năm→0,8 · 1–2 năm→1 · 2–4 năm→1,2 · 4–6 năm→1,5 · ≥6 năm→2 (vẫn chỉ là
+  gợi ý, trưởng phòng tự chọn lại). **Đã chạy script chuyển đổi 1 lần** cho CSDL lập trình cá nhân (sqlite)
+  khi còn ở dãy số trung gian, ánh xạ theo thứ hạng tương đối: `{1:0.8, 2:1.1, 3:1.7, 4:2.0}` – mọi nhân sự
+  hiện có đều rơi vào mức `0,8` (thấp nhất), **vẫn là giá trị hợp lệ ở dãy số mới** nên không cần migrate
+  lại lần 2. **Chưa chạy script này trên CSDL máy chủ thật** (`ngsi` trên 192.168.11.205) vì lúc đổi chưa
+  có nhân sự thật nào được nhập – nếu sau này phát hiện có `staff.factor` cũ dạng số nguyên 1–4 trên đó,
+  ánh xạ về đúng dãy mới (`{1:0.8, 2:1, 3:1.2, 4:1.5}`, không có giá trị cũ nào map thẳng tới `2`) trước
+  khi tin số liệu Capacity.
+  **`PT_MULT` (hệ số Độ phức tạp đầu việc, `constants.js`) dùng chung đúng dãy số trên: `{1:0.8, 2:1, 3:1.2,
+  4:1.5, 5:2}`** theo yêu cầu người dùng (khớp hẳn thang Hệ số năng lực, dễ so sánh) – **GIỮ NGUYÊN**
+  `PT_HINT` (nhãn "Đơn giản/Quen thuộc/Cần chuyên môn/Cần chuyên gia/Chưa có tiền lệ"), chỉ đổi con số
+  nhân. **Không cần script chuyển đổi dữ liệu** (khác hẳn `staff.factor` ở trên) vì `task.pt`/`e.pt` chỉ
+  lưu CẤP ĐỘ (số nguyên 1–5), số nhân thật tra qua `PT_MULT[pt]` mỗi lần tính workload (`wlOf()`,
+  `model.js`, `kpi-calc.js`) – đổi bảng tra là áp dụng ngay cho toàn bộ dữ liệu cũ lẫn mới, không có giá
+  trị cũ nào cần sửa lại.
 - Tiến độ dự án (`p._prog`, `p._phases`, `planStat()`) dùng trọng số `t.wl ?? 1` (không phải `t.wl || 0`)
   để đầu việc thiếu Quy mô không "biến mất" khỏi mẫu số gây tiến độ ảo 100%.
 - `planIsDone(p)` dựa vào `p._allDone` (mọi đầu việc chưa Hủy đều Hoàn thành), không dùng `p._prog===1`.
