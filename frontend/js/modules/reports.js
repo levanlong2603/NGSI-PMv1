@@ -390,7 +390,17 @@ async function rpExportPdf(report){
      th{position:sticky; top:0} (base.css, dùng chung cho tiêu đề cột dính khi cuộn ở mọi bảng trong app)
      là lỗi biết rõ của html2canvas: nó chụp các ô dính này lạc khỏi đúng vị trí trong bảng, nổi thành
      khung viền rỗng ở sai chỗ trong ảnh xuất ra. Ép position:static cho mọi phần tử trong bản sao để bảng
-     chụp đúng vị trí tự nhiên như trình bày.
+     chụp đúng vị trí tự nhiên như trình bày – áp dụng cho CẢ `.plan-no`/`.plan-dv` (2 cột dính trái của
+     bảng `.plan-grid`, `plan.css`), không chỉ `th`/`thead`, cùng lỗi y hệt.
+     `.plan-scroll` (khung cuộn riêng của bảng `.plan-grid`, `plan.css` – `overflow:auto; max-height:72vh`)
+     PHẢI bỏ giới hạn chiều cao trong bản sao, nếu không html2canvas chỉ chụp đúng phần đang cuộn vào khung
+     nhìn (~72vh) rồi DỪNG, cắt mất phần còn lại của bảng dài – đây là lý do chính khiến "xuất PDF không
+     ra gì"/bảng bị cắt cụt khi bảng kế hoạch dự án (planDetail(), dùng lại ở Báo cáo dự án) được nhúng vào
+     #rp-print từ sau khi thêm tính năng đó. `zoom:${planZoomLevel()}` (CSS zoom trên `<table>`, dùng để
+     phóng to/thu nhỏ khi XEM) cũng phải ép về `zoom:1` trong bản sao – html2canvas KHÔNG hỗ trợ thuộc tính
+     `zoom` (không có trong spec CSS chuẩn nó mô phỏng), giữ nguyên zoom khác 100% làm sai lệch phép đo
+     `getBoundingClientRect()` của `rowRanges` bên dưới (cơ sở để không ngắt trang giữa 1 hàng), dễ ra PDF
+     hỏng/trống tuỳ mức zoom đang chọn lúc xuất.
      Đo toạ độ từng <tr> (để sau này không ngắt trang giữa 1 hàng) NGAY TRONG bản sao này (không đo trên
      #rp-print gốc đang hiển thị) – đo trên bản gốc trước đây bị lệch dần xuống dưới bảng dài vì bản gốc
      còn viền/bo góc (border:1px) mà bản chụp thì không còn, 2 bản lệch vài px khiến tỉ lệ quy đổi
@@ -400,7 +410,43 @@ async function rpExportPdf(report){
     const c = doc.getElementById("rp-print");
     if(c){
       c.style.border = "none"; c.style.borderRadius = "0"; c.style.boxShadow = "none";
-      c.querySelectorAll("th, thead").forEach(n => { n.style.position = "static"; n.style.top = "auto"; });
+      c.querySelectorAll("th, thead, .plan-no, .plan-dv").forEach(n => { n.style.position = "static"; n.style.top = "auto"; n.style.left = "auto"; });
+      c.querySelectorAll(".plan-scroll").forEach(n => { n.style.maxHeight = "none"; n.style.overflow = "visible"; });
+      c.querySelectorAll(".plan-grid.tbl-wrap").forEach(n => { n.style.overflow = "visible"; });
+      c.querySelectorAll("[style*='zoom']").forEach(n => { n.style.zoom = "1"; });
+      /* LỖI THẬT đã gây "Không tạo được file PDF" (xác nhận bằng Playwright, đọc console.error thật, KHÔNG
+         đoán): html2canvas@1.4.1 có bộ phân tích CSS riêng, KHÔNG hiểu hàm màu hiện đại `color-mix()` –
+         gặp đúng `.pdetail{background:color-mix(in srgb, var(--paper) 55%, var(--surface))}` (base.css,
+         khung ngoài `planDetail()` – nay luôn có mặt trong #rp-print từ khi nhúng bảng đó vào Báo cáo dự
+         án) thì ném lỗi "Attempting to parse an unsupported color function" và DỪNG HẲN. **Lần sửa đầu
+         tiên SAI**: tưởng đọc `getComputedStyle().backgroundColor` rồi gán đè làm inline là đủ (trình
+         duyệt "tính hộ" màu cuối) – nhưng Chromium hiện đại trả `getComputedStyle()` của 1 màu từ
+         `color-mix()` ở dạng hàm CSS Color 4 `color(srgb r g b)` (đã kiểm tra lại bằng Playwright), và
+         html2canvas CŨNG không hiểu cú pháp `color(...)` này – đổi từ hàm màu lạ này sang hàm màu lạ khác,
+         lỗi y hệt không đổi. Phải ép về ĐÚNG hệ `rgb()`/`rgba()` kinh điển bằng mẹo vẽ 1 pixel lên `<canvas>`
+         rồi đọc lại giá trị điểm ảnh (`getImageData`) – canvas luôn trả về số nguyên 0–255 thường, không
+         phụ thuộc trình duyệt biểu diễn màu nội bộ kiểu gì, html2canvas chắc chắn đọc được. Làm cho MỌI
+         phần tử (không chỉ `.pdetail`) để an toàn với mọi hàm màu hiện đại khác có thể gặp sau này
+         (color-mix/oklch/lab/color()…), không phải dò từng chỗ một mỗi khi đổi theme. */
+      const colorCv = c.ownerDocument.createElement("canvas"); colorCv.width = 1; colorCv.height = 1;
+      const colorCtx = colorCv.getContext("2d", {willReadFrequently:true});
+      const toRgb = str => {
+        if(!str) return str;
+        try{
+          colorCtx.clearRect(0,0,1,1); colorCtx.fillStyle = str; colorCtx.fillRect(0,0,1,1);
+          const [r,g,b,a] = colorCtx.getImageData(0,0,1,1).data;
+          return a===255 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${(a/255).toFixed(3)})`;
+        }catch(e){ return str; }
+      };
+      Array.from(c.querySelectorAll("*")).concat([c]).forEach(n => {
+        const cs = (c.ownerDocument.defaultView || window).getComputedStyle(n);
+        if(cs.backgroundColor) n.style.backgroundColor = toRgb(cs.backgroundColor);
+        if(cs.color) n.style.color = toRgb(cs.color);
+        if(cs.borderTopColor) n.style.borderTopColor = toRgb(cs.borderTopColor);
+        if(cs.borderRightColor) n.style.borderRightColor = toRgb(cs.borderRightColor);
+        if(cs.borderBottomColor) n.style.borderBottomColor = toRgb(cs.borderBottomColor);
+        if(cs.borderLeftColor) n.style.borderLeftColor = toRgb(cs.borderLeftColor);
+      });
       const cb = c.getBoundingClientRect();
       cloneW = cb.width;
       rowRanges = Array.from(c.querySelectorAll("tr")).map(tr => {

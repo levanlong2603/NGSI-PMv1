@@ -11,22 +11,20 @@ main.addEventListener("click", e => {
   if(a==="exrefresh"){ render(); toast("Đã làm mới"); return; }
   if(a==="expr"){ S.exPr = t.dataset.p; render(); return; }
   if(a==="golo"){ S.view="load"; store("view","load"); render(); return; }
-  if(a==="godash"){ S.view="dash"; S.projTab="overview"; store("view","dash"); render(); return; }
+  /* S.projOpenId=null: lỡ đang mở trang chi tiết 1 dự án (xem "goplan" bên dưới) mà bấm "Xem tất cả"/"Quay
+     lại tổng quan" ở nơi khác thì phải về đúng danh sách, không kẹt lại trang chi tiết cũ. */
+  if(a==="godash"){ S.view="dash"; S.projOpenId=null; store("view","dash"); render(); return; }
   if(a==="wk"){ const d=+t.dataset.d; S.week = d===0 ? mondayOf(todayISO()) : addDays(S.week, d); render(); }
   else if(a==="tf"){ S.typeFilter=t.dataset.t; render(); }
-  /* Bấm 1 dự án ở tab "Tổng quan" KHÔNG còn mở trang riêng (ovDetailHeader()+planDetail(p), đã bỏ hẳn theo
-     yêu cầu người dùng) – nhảy thẳng sang Báo cáo → "Báo cáo dự án" (S.view/S.rp.tab), tự chọn sẵn đúng dự
-     án đó (S.rp.pjProject). Tự dựng đủ S.rp lần đầu (nếu rpInit() – reports.js – chưa chạy lần nào, tức
-     đây là điều hướng đầu tiên trong phiên) để không bị rpInit() ghi đè lại pjProject do `if(!S.rp)`. */
-  else if(a==="goplan"){
-    S.rp = S.rp || {pjKind:"week", pjAnchor:S.week};
-    /* pjPtype luôn trả về "Tất cả" khi nhảy từ Tổng quan – nếu đang lọc dở 1 Loại dự án khác (vd "Thầu")
-       mà dự án vừa bấm thuộc loại khác, dự án đó sẽ bị LỌC MẤT khỏi options của <select> (rpProjOptions()),
-       khiến ô chọn hiện trống dù S.rp.pjProject vẫn đúng id (báo cáo vẫn hiện đúng, chỉ riêng cái <select>
-       nhìn sai) – đặt lại "Tất cả" để luôn thấy đúng dự án vừa chọn trong danh sách. */
-    S.rp.tab = "project"; S.rp.pjProject = t.dataset.id; S.rp.pjPtype = "Tất cả"; S.rp.exportOpen = false;
-    S.view = "reports"; store("view", "reports"); render();
-  }
+  /* Bấm 1 dự án ở trang "Dự án" (gộp Tổng quan + Kế hoạch dự án thành 1 trang, project-overview.js) mở
+     THẲNG trang chi tiết dự án đó (S.projOpenId, đọc ở viewProject()) – THAY HẲN nội dung trang, có nút
+     "← Quay lại" (ACTIONS["ovback"]) để trở về danh sách. Trang chi tiết dùng lại NGUYÊN planDetail(p,true)
+     (bảng "Kế hoạch dự án" đầy đủ, sửa/xoá được) – các nút bên trong nó ("Sửa thông tin"/"Xoá dự án"/
+     "+ Đầu việc", action "editp"/"delp"/"addtask" bên dưới, và bấm vào 1 dòng đầu việc, action "task") đều
+     đọc `S.planSel` (không phải data-id riêng của từng nút) để biết đang sửa dự án nào – PHẢI đặt luôn
+     `S.planSel` ở đây cùng lúc với `S.projOpenId`, thiếu dòng này các nút đó sẽ thao tác nhầm dự án (hoặc
+     null) vì S.planSel có thể đang trỏ dự án khác/còn trống từ trước. */
+  else if(a==="goplan"){ S.planSel=t.dataset.id; S.projOpenId=t.dataset.id; render(); }
   else if(a==="addentry") entryForm(null);
   else if(a==="editentry"){ const person=t.dataset.person||S.me; const doc=weekDoc(S.week,person); const en=doc&&(doc.entries||[]).find(x=>x.id===t.dataset.id); if(en) entryForm(en, person); }
   else if(a==="copyprev") copyPrev();

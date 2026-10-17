@@ -500,12 +500,79 @@ nút `+`/`✕` mỗi dòng (`ACTIONS["addcatrow"]`/`["delcatrow"]`) chèn/xoá n
   ở `planTaskRow()`/`planMsTable()` (`plan.js`: `diff=actEnd−deadline`, 0→"✓ Đúng hạn", âm→"✓ Sớm N ngày",
   dương→"⚠ Trễ N ngày") vì `reports.js` không gọi hàm nội bộ của `plan.js` cho phần này (khác cách dùng
   thẳng `planDetail()`/`planGanttPanel()`… ở trên) – **đổi công thức "Đánh giá" ở 1 nơi thì phải đổi luôn cả
-  2 nơi** (`plan.js` lẫn `rpExportAssess()` ở `reports.js`), không tự đồng bộ. PDF không cần sửa gì thêm
-  (đã tự khớp từ trước, chụp đúng DOM `#rp-print` đã chứa `planDetail(pr.p)`).
+  2 nơi** (`plan.js` lẫn `rpExportAssess()` ở `reports.js`), không tự đồng bộ.
+  **CẬP NHẬT TIẾP – Xuất PDF thật ra CÓ cần sửa**: "PDF tự khớp sẵn, không cần sửa gì" ở trên SAI – sau khi
+  nhúng `planDetail(pr.p)` vào `#rp-print`, Xuất PDF (`rpExportPdf()`) bị hỏng/cắt cụt vì bảng đó mang theo
+  2 đặc điểm chỉ dành cho XEM trên "Kế hoạch dự án"/"Báo cáo dự án", html2canvas (thư viện chụp PDF) không
+  xử lý đúng: (1) `.plan-scroll{overflow:auto; max-height:72vh}` – html2canvas chỉ chụp đúng phần đang cuộn
+  vào khung nhìn (~72vh) rồi dừng, cắt mất phần bảng còn lại nếu dài hơn; (2) `zoom:${planZoomLevel()}` trên
+  `<table>` (CSS `zoom`, không chuẩn) – html2canvas không hỗ trợ, làm sai `getBoundingClientRect()` dùng để
+  đo `rowRanges` (tránh ngắt trang giữa 1 hàng), tuỳ mức zoom đang chọn lúc xuất mà ra PDF hỏng/trống khác
+  nhau. Sửa trong CHÍNH `onclone` đã có sẵn (không đụng DOM thật đang hiển thị): ép `.plan-scroll` về
+  `max-height:none; overflow:visible`, `.plan-grid.tbl-wrap` về `overflow:visible`, mọi phần tử có `zoom`
+  inline về `zoom:1`, và mở rộng danh sách ép `position:static` (vốn chỉ có `th`/`thead`) sang thêm
+  `.plan-no`/`.plan-dv` (2 cột dính trái của `.plan-grid`, cùng lỗi sticky y hệt thead). Nhớ: BẤT KỲ bảng
+  nào khác sau này nhúng vào `#rp-print` mà có cuộn riêng (`overflow:auto`+`max-height`) hoặc `zoom` CSS
+  đều cần ép lại y hệt kiểu này trong `onclone`, không tự động hoạt động.
+  **CẬP NHẬT TIẾP – lỗi THẬT SỰ làm Xuất PDF báo "Không tạo được file PDF" là lỗi KHÁC**, không phải 2 cái
+  ở trên (2 cái đó có thật và vẫn cần sửa, nhưng không phải nguyên nhân gây đứng hẳn/báo lỗi) – đã dùng
+  Playwright (headless Chromium, tạo tài khoản test tạm rồi khoá lại ngay sau khi xong) đăng nhập thật, mở
+  đúng "Báo cáo dự án", bấm Xuất PDF, đọc `console.error` THẬT thay vì đoán, mới ra đúng nguyên nhân:
+  html2canvas@1.4.1 có bộ phân tích CSS riêng, không hiểu hàm màu hiện đại `color-mix()` – gặp đúng
+  `.pdetail{background:color-mix(in srgb, var(--paper) 55%, var(--surface))}` (`base.css`, khung ngoài
+  `planDetail()` – nay luôn có trong `#rp-print` từ khi nhúng bảng đó vào Báo cáo dự án) thì ném lỗi
+  "Attempting to parse an unsupported color function" và DỪNG HẲN, không tạo được canvas nào cả.
+  **Lần sửa đầu SAI theo kiểu tinh vi, dễ tưởng đã xong**: nghĩ đọc `getComputedStyle().backgroundColor`
+  rồi gán đè làm inline style trong bản sao là đủ ("để trình duyệt tự tính hộ màu cuối") – build/syntax
+  không báo lỗi gì, nhưng chạy lại Playwright vẫn THẤY NGUYÊN lỗi cũ: Chromium hiện đại trả
+  `getComputedStyle()` của 1 màu sinh từ `color-mix()` ở dạng hàm CSS Color 4 `color(srgb r g b)`, mà
+  html2canvas CŨNG không hiểu cú pháp `color(...)` này – chỉ đổi từ 1 hàm màu lạ sang 1 hàm màu lạ khác,
+  không giải quyết được gì (đã tự kiểm tra lại bằng Playwright + `getComputedStyle` trần trước khi vá lần
+  2, không đoán suông). **Cách sửa ĐÚNG, đã xác nhận lại bằng Playwright thành công** (console in ra
+  "Finished rendering", toast đổi thành "Đã xuất file PDF"): vẽ màu đó lên 1 `<canvas>` 1×1 rồi đọc lại
+  bằng `getImageData()` – canvas luôn trả về đúng 4 số nguyên 0–255 (R,G,B,A) bất kể trình duyệt biểu diễn
+  màu nội bộ kiểu gì, dựng lại thành chuỗi `rgb()`/`rgba()` kinh điển từ 4 số đó rồi mới gán làm inline –
+  html2canvas chắc chắn đọc được dạng này. Áp dụng cho `background-color`/`color`/4 cạnh `border-*-color`
+  của MỌI phần tử trong `#rp-print` (không chỉ `.pdetail`) để an toàn với mọi hàm màu hiện đại khác có thể
+  gặp sau này (oklch/lab/color()…) mà không phải dò từng chỗ một mỗi lần đổi theme. **Bài học**: với lỗi
+  parse màu/CSS kiểu này, ĐỪNG tin "đọc computed style rồi gán đè là xong" mà không tự kiểm tra lại
+  `getComputedStyle()` thật sự trả về CHUỖI gì trên đúng trình duyệt/phiên bản Chromium đang chạy – các
+  phiên bản khác nhau serialize màu khác nhau, suy đoán theo trực giác rất dễ sai mà vẫn tưởng đã sửa xong
+  vì code chạy không báo lỗi cú pháp.
   **Nút "← Quay lại tổng quan"** (trang `ovDetailHeader()` cũ có, bị mất khi bỏ trang đó) đã thêm lại ở
   ngay thanh chọn dự án của `rpProjectContent()` (`reports.js`, cạnh nút "Xuất báo cáo") – dùng thẳng
   `data-act="godash"` có sẵn (giống nút "Xem tất cả" ở Dashboard, `exec-dashboard.js`: `S.view="dash";
   S.projTab="overview"`), không viết action riêng.
+  **CẬP NHẬT CUỐI – đã GỘP LẠI THÀNH 1 TRANG "Dự án" DUY NHẤT, đảo ngược phần "đã bỏ hẳn" ở đầu mục này**:
+  theo yêu cầu người dùng "kết hợp phần tổng quan và kế hoạch dự án lại làm 1 trang dự án... sẽ không còn
+  trang dự án nữa" (ý: không còn kiểu 2 tab ngang "Tổng quan"/"Kế hoạch dự án" như trước đó) – `goplan`
+  (`core/events.js`) KHÔNG còn nhảy sang "Báo cáo → Báo cáo dự án" nữa (hành vi mô tả ở đoạn trên đã hết
+  hiệu lực), mà quay lại mở trang chi tiết CÙNG `view` "Dự án" (`S.view="dash"`, `project-overview.js`),
+  chỉ khác state: `S.projOpenId` (THAY THẾ hẳn `S.projTab`/`S.ovDetailId` cũ – không dùng `S.projTab` nữa
+  dù tên state trùng gợi nhớ phần lịch sử ở trên) + bắt buộc đặt kèm `S.planSel` (đọc bởi các nút
+  `editp`/`delp`/`addtask`/`task` nằm BÊN TRONG `planDetail(p,true)`, không nhận `data-id` riêng). Cụ thể:
+  - `viewProject()` (`project-overview.js`): có `S.projOpenId` → trả `ovDetailHeader(p) + planDetail(p,
+    true)` (bảng ĐẦY ĐỦ, sửa/xoá được – giống đúng tab "Kế hoạch dự án" cũ); không có → trả bảng "Tổng
+    quan" (`dashContent()`/`ovTable()`) kèm 2 nút **"Nhập Excel"/"+ Dự án mới"** dọn từ `planToolbar()` cũ
+    sang ngay hàng lọc/tìm kiếm của `dashContent()`.
+  - `ovDetailHeader(p)` **đã PHỤC HỒI** (không phải xoá hẳn như dòng cũ nói) – y hệt bản cũ trước khi bị
+    xoá (thanh tóm tắt Dự án/Phụ trách/Tiến độ/Mốc tiếp theo + dải hạng mục + badge quá hạn/sắp hạn), chỉ
+    đổi nút cuối từ "← Quay lại tổng quan" sang **"← Quay lại"** (`ACTIONS["ovback"]` cũng phục hồi,
+    `S.projOpenId=null`).
+  - `planContent()`/`planToolbar()` (`plan.js`, UI card xổ inline kiểu tab cũ) **không ai gọi tới nữa**
+    nhưng vẫn giữ nguyên trong file (không xoá, đúng quy ước chung) – đừng tưởng đây là nơi sửa khi cần đổi
+    trang "Dự án", code thật đang chạy nằm ở `project-overview.js`.
+  - 3 panel Tiến độ theo tuần/Đầu việc khẩn cấp/Mốc thanh toán (dọn sang `rpProjectContent()` ở đoạn trên)
+    **giữ nguyên vị trí đó** – KHÔNG dọn ngược lại trang "Dự án" này; trang "Dự án" chỉ dùng `planDetail(p,
+    true)` (không có 3 panel, đúng y hệt `extra=true` từ trước tới nay).
+  - Chỗ nào còn set `S.projTab="plan"`/`S.projTab="overview"` để điều hướng vào dự án (đã rà + sửa:
+    `exec-dashboard.js`, 2 nút "Đi đến xử lý" trong popup xem thông báo) **phải đổi thành `S.projOpenId=
+    pid`** (kèm `S.planSel=pid` nếu điều hướng thẳng tới mở `taskForm()`) – `S.projTab` không còn được
+    `viewProject()` đọc nữa, set mà không set `S.projOpenId` sẽ mở nhầm về bảng Tổng quan thay vì trang
+    chi tiết. Nếu phát hiện thêm chỗ nào khác còn set `S.projTab` khi điều hướng vào 1 dự án, sửa theo
+    đúng khuôn này.
+  - Bảng "Báo cáo dự án" (`rpProjectContent()`, menu "Báo cáo") **không đổi gì** – vẫn tách bạch hoàn toàn
+    với trang "Dự án" ở đây, vẫn chọn dự án qua `<select>` riêng, vẫn gọi `planDetail(pr.p, false, true)`.
 - **Tham khảo `ptkt-appv1` cho "giao diện dự án"** *(lịch sử – xem ghi chú cập nhật vị trí ngay trên)*: đã diff `plan.js`/`plan.css`/`project-overview.js` 2 bên
   – khác nhau SÂU hơn màu sắc (ptkt dùng lại kiểu thẻ/card nhóm theo Loại ở Tổng quan dự án – đúng kiểu NGSI
   **đã bỏ** theo yêu cầu người dùng trước đó để đổi sang bảng sort được; bảng đầu việc chính của ptkt tái
@@ -582,6 +649,17 @@ nút `+`/`✕` mỗi dòng (`ACTIONS["addcatrow"]`/`["delcatrow"]`) chèn/xoá n
   "Khung mẫu"/"Bộ công thức sheet Report" ở trên) – trang đó là xem/xuất báo cáo, không phải chỗ sửa dữ
   liệu, theo phản hồi người dùng ("dù sao cũng không sửa được"). Giờ 3 nút chỉ hiện khi `extra=true` (tab
   "Kế hoạch dự án"); muốn chèn/xoá dòng vẫn làm bình thường ở đúng tab đó.
+- **Form "Đầu việc" (`taskForm()`, `plan.js`) – ô textarea đầu tiên ĐỔI từ "Nội dung chi tiết" (`task.detail`)
+  sang "Note" (`task.note`)**: theo yêu cầu người dùng, nội dung sửa ở ô này giờ là "note" (Ghi chú của
+  trưởng phòng), không còn là mô tả tĩnh của đầu việc nữa. `task.detail` **không còn ô nhập** trong form
+  (giữ nguyên giá trị cũ khi sửa đầu việc đã có – đọc từ `raw.detail`, không đụng tới – giống hệt cách
+  `task.collab` đã làm trước đó), vẫn còn hiển thị ở 2 nơi cũ không đổi (`planTaskRow()` dòng phụ dưới tên
+  đầu việc; `openInfo()` mục "Nội dung") nhưng từ nay chỉ là dữ liệu CŨ, không cập nhật thêm được qua UI.
+  Ô "Note" mới **`disabled` với người không phải trưởng phòng/phó phòng** (`!S.canEdit`) – máy chủ chặn
+  thật (`canWrite()`/PUT `projects`, `backend/server.js`: non-`FULL_ROLES` gửi gì cũng bị ghi đè lại giá
+  trị `task.note` cũ) nên nếu không khoá ô này ở giao diện, nhân viên tưởng đã lưu note nhưng thực ra bị
+  máy chủ âm thầm bỏ qua – khớp đúng cách `weekly-input.js` đã làm với field "mgrNote" (cùng ghi vào
+  `task.note`, 2 đường nhập khác nhau nhưng chung 1 trường, không xung đột).
 - Quyền phải kiểm tra ở **máy chủ** (`RULES`/`canWrite`), không chỉ ẩn nút.
 - Không đổi định dạng tài liệu đang có (`projects`, `weeks`, `config`) mà không viết bước chuyển đổi dữ liệu.
 - Không commit `.env`, `data/`, `node_modules/`.

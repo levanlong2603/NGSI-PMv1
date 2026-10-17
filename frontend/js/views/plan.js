@@ -592,7 +592,15 @@ function taskForm(p, t){
     fields:[
       {key:"no", label:"No.", type:"text", half:true},
       {key:"dv", label:"Đầu việc", type:"text", required:true, half:true},
-      {key:"detail", label:"Nội dung chi tiết", type:"textarea"},
+      /* CẬP NHẬT: ô textarea này đổi từ "Nội dung chi tiết" (task.detail, tĩnh/mô tả đầu việc) sang "Note"
+         (task.note, "Ghi chú của trưởng phòng") theo yêu cầu người dùng – nội dung hiện/sửa ở đây giờ là
+         note, không còn là nội dung đầu việc nữa. `task.detail` KHÔNG còn ô nhập ở form (giữ nguyên giá
+         trị cũ nếu có, xem `onSave` bên dưới – không xoá dữ liệu cũ, chỉ không sửa tiếp được qua đây).
+         Máy chủ CHẶN THẬT (`canWrite()`/PUT projects, `backend/server.js`) nên dù PUT cả dự án, task.note
+         chỉ trưởng phòng (`S.canEdit`) ghi được – nhân viên gửi gì cũng bị máy chủ ghi đè lại giá trị cũ;
+         vì vậy ô này `disabled` với người không phải trưởng phòng (khớp đúng cách `weekly-input.js` làm
+         với field "mgrNote" cùng ghi vào `task.note`). */
+      {key:"note", label:"Note", type:"textarea", disabled:!S.canEdit, hint: S.canEdit?"":"Chỉ trưởng phòng/phó phòng sửa được."},
       {key:"owner", label:"Phụ trách", type:"select", options:ownerOpts, half:true, hint:()=>ownerOpts.length>1?"":"Dự án chưa gán PM/TM/AM/ACC nào – sửa ở “Sửa thông tin dự án”."},
       {key:"pr", label:"Ưu tiên", type:"seg", options:TASK_PR.map(x=>[x,x]), half:true},
       /* Không bắt buộc chọn Quy mô nữa (theo yêu cầu người dùng, file mẫu thật nhiều đầu việc – nhất là
@@ -622,11 +630,6 @@ function taskForm(p, t){
       {key:"actStart", label:"Bắt đầu", type:"date", half:true},
       {key:"actEnd", label:"Kết thúc", type:"date", half:true},
       {key:"st0", label:"Trạng thái ban đầu (chỉ dùng khi chưa có dữ liệu tuần)", type:"select", options:[["",""],...ST_ALL.map(s=>[s,s])]},
-      /* "Ghi chú của trưởng phòng" (task.note) không còn sửa được ở đây nữa – đã có "Đánh giá khi hoàn
-         thành" bên dưới cho nhận xét sau khi xong; ghi chú vướng mắc/định hướng xử lý giờ chỉ sửa ở Nhập
-         theo tuần (weekly-input.js, field "mgrNote" – cùng ghi vào task.note qua route task-note). Vẫn
-         đọc lại t.note để hiển thị (xem openInfo() bên dưới, popup chi tiết 1 đầu việc) – bảng Kế hoạch dự
-         án (planTaskRow()) đã bỏ cột "Note" riêng theo yêu cầu người dùng, chỉ còn xem được qua đây. */
       /* Chỉ trưởng phòng đánh giá khi hoàn thành, không phải nhân viên (kể cả TM/người tạo được sửa đầu việc) */
       ...(t && t.status==="Hoàn thành" && S.canEdit ? [
         {heading:"Đánh giá khi hoàn thành"},
@@ -643,7 +646,7 @@ function taskForm(p, t){
          người dùng – t.doers vẫn tính trong model.js (dùng ở reports.js/kpi.js) chỉ không hiện cột riêng ở
          đây nữa. Vẫn GIỮ NGUYÊN giá trị collab cũ (nếu có từ lúc còn ô nhập) khi sửa đầu việc đã có sẵn,
          tránh xoá mất dữ liệu cũ một cách âm thầm. */
-      const body = {id: x.id || nextTaskId(p), no:x.no||"", dv:x.dv, detail:x.detail||"", owner:x.owner||"", collab: raw ? (raw.collab||"") : "", deadline:x.deadline||null,
+      const body = {id: x.id || nextTaskId(p), no:x.no||"", dv:x.dv, detail: raw ? (raw.detail||"") : "", owner:x.owner||"", collab: raw ? (raw.collab||"") : "", deadline:x.deadline||null,
         hdStart:x.hdStart||null, adjStart:x.adjStart||null, adjEnd:x.adjEnd||null, expStart:x.expStart||null, expEnd:x.expEnd||null, actStart:x.actStart||null, actEnd:x.actEnd||null,
         daysActual:x.daysActual??null, daysProposed:x.daysProposed??null, qm:x.qm||null, pt:x.pt||null, pr:x.pr||"",
         init:{status:x.st0||"", ms:x.ms0??null, nn:x.nn0||""}, note:x.note||"", eval: raw&&raw.eval ? {...raw.eval} : {}, updatedAt:Date.now()};

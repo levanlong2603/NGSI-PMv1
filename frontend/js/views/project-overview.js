@@ -1,28 +1,41 @@
 "use strict";
-/* Màn hình: Dự án – gộp "Tổng quan dự án" (xem nhanh toàn bộ dự án dạng bảng, có menu ⋮ mở nhanh "Sửa
-   thông tin" nhưng không sửa/xoá đầu việc tại đây) và "Kế hoạch dự án" (quản trị đầy đủ, plan.js) thành 1 mục
-   menu "Dự án" với 2 tab ngang hàng (S.projTab, dùng chung .rp-tabs với Báo cáo – reports.js). Tách thanh
-   công cụ (toolbar, lên hàng tiêu đề chung) khỏi nội dung từng tab (content), đúng kiểu reports.js:
-   viewReports(). Giữ nguyên 2 bộ lọc/trạng thái độc lập của 2 tab (S.dashQuery/S.typeFilter cho Tổng quan,
-   S.planQuery/S.me cho Kế hoạch – xem plan.js) – gộp giao diện, không gộp cơ chế lọc dữ liệu. */
+/* Màn hình: Dự án – GỘP THÀNH 1 TRANG DUY NHẤT (không còn 2 tab "Tổng quan"/"Kế hoạch dự án" như trước –
+   bỏ hẳn theo yêu cầu người dùng, "sẽ không còn trang dự án [dạng tab] nữa"): giao diện CHÍNH luôn là
+   bảng "Tổng quan" (danh sách sort được, `dashContent()`/`ovTable()`) kèm 2 nút "Nhập Excel"/"+ Dự án mới"
+   (dọn từ `planContent()`/`plan.js` sang đây, cùng `ACTIONS["planimport"]`/`["newp"]` có sẵn, không viết
+   lại). Bấm vào 1 dự án (`data-act="goplan"`, `core/events.js` – đặt `S.projOpenId`) thay THẲNG toàn bộ nội
+   dung trang bằng trang CHI TIẾT dự án đó: `ovDetailHeader(p)` (thanh tóm tắt + nút "← Quay lại") +
+   `planDetail(p, true)` (đúng bảng "Kế hoạch dự án" ĐẦY ĐỦ, sửa/xoá được – `extra=true`, y hệt bảng dùng ở
+   `planContent()` cũ, chỉ khác chỗ gọi). `planContent()`/`planToolbar()` (`plan.js`, kiểu card xổ inline
+   cũ) không còn nơi nào gọi tới nữa – GIỮ LẠI không xoá (quy ước chung của file này, phòng khi cần dùng
+   lại), chỉ không còn là 1 tab riêng. Lưu ý: bảng "Báo cáo dự án" ở menu "Báo cáo" (reports.js) KHÔNG đổi
+   gì – đó vẫn là nơi xem/xuất báo cáo riêng (chọn dự án qua `<select>` ở đó), tách bạch hẳn với trang "Dự
+   án" (sửa/xoá được) ở đây. */
 function viewProject(){
-  S.projTab = S.projTab || "overview";
-  /* Bấm vào 1 dự án ở tab "Tổng quan" (data-act="goplan", core/events.js) KHÔNG còn mở trang riêng của
-     dự án đó tại đây nữa – đã bỏ hẳn (ovDetailHeader() + planDetail(p) không extra, cùng S.ovDetailId/
-     ACTIONS["ovback"]) theo yêu cầu người dùng, chuyển hẳn sang Báo cáo → "Báo cáo dự án" (tự chọn sẵn
-     đúng dự án, xem events.js) – đó mới là nơi xem nhanh/báo cáo 1 dự án từ nay, gồm cả 3 nút "Tiến độ
-     theo tuần"/"Đầu việc khẩn cấp"/"Mốc thanh toán" (dọn từ trang cũ sang, xem rpProjectContent() ở
-     reports.js, vẫn dùng lại nguyên planGanttPanel()/planUrgentPanel()/planPaymentPanel() ở plan.js). */
-  const toolbar = S.projTab==="plan" ? planToolbar() : dashToolbar();
+  const p = S.projOpenId && M.pById.get(S.projOpenId);
+  if(p) return `<div class="head"><div><h1>Dự án</h1></div></div>` + ovDetailHeader(p) + planDetail(p, true);
+  S.projOpenId = null;
+  const toolbar = dashToolbar();
   let h = `<div class="head"><div><h1>Dự án</h1></div><div class="ex-ctl">${toolbar}</div></div>`;
-  h += `<div class="rp-tabs" role="tablist">
-    <button type="button" role="tab" data-act="projtab" data-t="overview" aria-selected="${S.projTab==="overview"}">Tổng quan</button>
-    <button type="button" role="tab" data-act="projtab" data-t="plan" aria-selected="${S.projTab==="plan"}">Kế hoạch dự án</button>
-  </div>`;
-  h += S.projTab==="plan" ? planContent() : dashContent();
+  h += dashContent();
   return h;
 }
-ACTIONS["projtab"] = el => { S.projTab = el.dataset.t; render(); };
+/* Thanh tóm tắt đầu trang chi tiết 1 dự án (Dự án/Phụ trách/Tiến độ/Mốc tiếp theo + dải hạng mục + cảnh
+   báo quá hạn/sắp hạn + nút "← Quay lại"), cùng kiểu nhãn nhỏ/giá trị đậm với trang chi tiết nhân sự ở
+   KPI & Năng lực (me-sum me-sum-end, kpi.js) – không có "SE" (web này không còn khái niệm đó, CLAUDE.md). */
+function ovDetailHeader(p){
+  const cell = (label, val) => `<div><div class="small muted">${label}</div><div style="font-weight:700; font-size:16px">${val}</div></div>`;
+  return `<section class="panel" style="margin-bottom:12px"><div class="panel-b me-sum me-sum-end">
+    ${cell("Dự án", typeDot(p.type)+esc(p.name))}
+    ${cell("Phụ trách", esc(p.pm||p.owner||"–"))}
+    ${cell("Tiến độ", pct(p._prog))}
+    ${cell("Mốc tiếp theo", p._next?dmy(p._next):"–")}
+    <div class="strip-cell">${strip(p, "plan", "planSel")}</div>
+    <div class="badges">${p._late?`<span class="pill bad">${p._late} quá hạn</span>`:""}${p._stuck?`<span class="pill warn">${p._stuck} vướng</span>`:""}${p._soon?`<span class="pill info">${p._soon} sắp hạn</span>`:""}</div>
+    <div class="toolbar" style="margin-left:auto"><button class="btn" data-act="ovback">← Quay lại</button></div>
+  </div></section>`;
+}
+ACTIONS["ovback"] = () => { S.projOpenId = null; render(); };
 /* Thanh điều khiển giống hệt Dashboard (ô kỳ + Tuần/Tháng/Quý + Tổng thể/Cá nhân + làm mới) – tab này
    chưa dùng kỳ để lọc gì, chỉ thêm sẵn cho đồng bộ giao diện, dùng chung S.week/S.period/periodInfo()/
    exnav/exper (exec-dashboard.js, events.js) với Dashboard nên đổi kỳ ở đâu cũng khớp nơi khác. */
@@ -48,6 +61,9 @@ function dashContent(){
   let h = `<div class="head-ctl" style="margin-bottom:16px">
       <div class="chips" role="group" aria-label="Lọc theo loại">${PLAN_FILTERS.map(f=>`<button class="chip-btn" data-act="tf" data-t="${esc(f.key)}" aria-pressed="${S.typeFilter===f.key}">${esc(f.label)}</button>`).join("")}</div>
       <input class="inp" type="search" placeholder="Tìm dự án" style="width:180px" data-act="dashq" value="${esc(S.dashQuery||"")}" aria-label="Tìm dự án">
+      ${S.canEdit?`<button class="btn" data-act="planimport" title="Tạo dự án mới từ file Excel theo đúng mẫu bảng tiến độ của phòng (sheet Infor + NGSI)">Nhập Excel</button>
+      <input type="file" accept=".xlsx" id="planImportFile" hidden>
+      <button class="btn primary" data-act="newp">+ Dự án mới</button>`:""}
     </div>`;
   h += `<div class="band">
     <div class="stat"><div class="v">${running("Triển khai")}</div><div class="l">${typeDot("Triển khai")}Dự án triển khai đang chạy</div></div>
@@ -76,12 +92,12 @@ function projStatusText(p){
    chọn (S.ovSort). "Khách hàng" = `p.client` (trường mới, nhập ở `projectForm()`, plan.js – dự án cũ
    trước khi có trường này hiện rỗng/"–"). KHÔNG có cột "Mã dự án" (đã bỏ theo yêu cầu người dùng – `p.id`
    là slug tự sinh từ tên, dài và không có ý nghĩa để hiển thị, vd "p-du-an-nang-cao-..."); tên dự án tô
-   màu teal thay vào vị trí "liên kết" đó. Bấm vào 1 dòng (ngoài menu ⋮) đi thẳng sang tab "Kế hoạch dự án"
-   của đúng dự án đó (data-act="goplan", core/events.js). Menu ⋮ (S.ovMenuOpen, giữ id dự án đang mở – chỉ
-   1 menu mở tại 1 thời điểm) cho "Xem chi tiết" (giống hệt bấm dòng) và "Sửa thông tin" (mở thẳng
-   projectForm(p), plan.js – chỉ hiện nếu canManageProject(p), cùng điều kiện với nút "Sửa thông tin" ở Kế
-   hoạch dự án) – KHÔNG có "Xoá dự án" ở đây, vẫn phải vào Kế hoạch dự án để xoá (hành động phá huỷ, cố
-   tình không đặt ở màn xem nhanh). */
+   màu teal thay vào vị trí "liên kết" đó. Bấm vào 1 dòng (ngoài menu ⋮) mở THẲNG trang chi tiết đúng dự án
+   đó (data-act="goplan", core/events.js – đặt S.projOpenId, xem viewProject() ở trên). Menu ⋮ (S.ovMenuOpen,
+   giữ id dự án đang mở – chỉ 1 menu mở tại 1 thời điểm) cho "Xem chi tiết" (giống hệt bấm dòng) và "Sửa
+   thông tin" (mở thẳng projectForm(p), plan.js – chỉ hiện nếu canManageProject(p), cùng điều kiện với nút
+   "Sửa thông tin" ở trang chi tiết) – KHÔNG có "Xoá dự án" ở đây, vẫn phải mở trang chi tiết để xoá (hành
+   động phá huỷ, cố tình không đặt ở màn xem nhanh). */
 const OV_SORT = {
   name: p=>p.name.toLowerCase(),
   client: p=>(p.client||"").toLowerCase(),
@@ -117,7 +133,7 @@ function ovTable(P, q){
     <th style="width:36px">#</th>${th("name","Tên dự án")}${th("client","Khách hàng")}${th("pm","PM")}${th("start","Bắt đầu")}${th("end","Kết thúc")}${th("prog","% HT")}<th>Trạng thái</th><th>Đánh giá</th><th style="width:36px"></th>
     </tr></thead><tbody>`;
   if(!ps.length){
-    out += `<tr><td colspan="10"><div class="empty">${q?`Không có dự án nào khớp “${esc(S.dashQuery)}”.`:'Chưa có dự án nào. Thêm ở tab "Kế hoạch dự án".'}</div></td></tr>`;
+    out += `<tr><td colspan="10"><div class="empty">${q?`Không có dự án nào khớp “${esc(S.dashQuery)}”.`:'Chưa có dự án nào. Bấm "+ Dự án mới" ở trên để tạo.'}</div></td></tr>`;
   }
   ps.forEach((p,i) => {
     const dr = projDateRange(p);
