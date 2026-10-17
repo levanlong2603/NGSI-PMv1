@@ -51,8 +51,17 @@ function viewInputAll(w){
 }
 /* Cột "Ma sát" (mức độ + nguyên nhân) và "Vướng / cần hỗ trợ" (ghi chú) tách riêng 2 ô, không ghép chung
    bằng dấu " · " như trước – nguyên nhân đi cùng ma sát, không đi cùng ghi chú vướng mắc nữa. */
+/* Tên đầu việc hiện kèm đường dẫn phân cấp (vd "E.V.1. Đổ tải") – đúng định dạng ô "search" lúc chọn Đầu
+   việc (taskOpts(), ngay dưới). e.ref.t là task THÔ (chưa qua enrich, xem taskPathNo() ở model.js) nên
+   KHÔNG đọc thẳng e.ref.t.pathNo (luôn rỗng) – phải tra lại qua taskPathNo(e.ref.p, e.ref.t.id), giống
+   cách inputTreeRows() đã tra t.phase qua taskPhase() thay vì đọc thẳng e.ref.t.phase. */
+function entryTaskLabel(e){
+  if(!e.ref) return "(đầu việc đã xoá)";
+  const path = taskPathNo(e.ref.p, e.ref.t.id);
+  return (path?path+". ":"")+planShortName(e.ref.t.dv);
+}
 function inputAllRow(e){
-  const name = e.ref ? planShortName(e.ref.t.dv) : "(đầu việc đã xoá)";
+  const name = entryTaskLabel(e);
   const proj = (M.pById.get(e.projectId)||{}).name || "(dự án đã xoá)";
   return `<tr class="click" data-act="editentry" data-id="${esc(e.id)}" data-person="${esc(e.person)}" tabindex="0" title="${e.ref?esc(e.ref.t.dv):""}">
     <td style="padding-left:32px"><div class="small muted">${esc(proj)}</div><div class="cell-main">${esc(name)}</div></td>
@@ -66,7 +75,7 @@ function inputAllRow(e){
 /* Màu viền trái theo cấp: đậm dần khi lên cấp cha, để nhìn ra ngay phân cấp mà không cần gấp/mở */
 const INPUT_LVL_BORDER = ["var(--teal)", "color-mix(in srgb, var(--teal) 45%, var(--line))", "var(--line)"];
 function inputRow(e, lvl=1, locked=false){
-  const name = e.ref ? planShortName(e.ref.t.dv) : "(đầu việc đã xoá)";
+  const name = entryTaskLabel(e);
   return `<tr ${locked?"":'class="click" data-act="editentry" data-id="'+esc(e.id)+'" tabindex="0"'} title="${e.ref?esc(e.ref.t.dv):""}">
     <td style="padding-left:${10+lvl*22}px; border-left:3px solid ${INPUT_LVL_BORDER[lvl]||INPUT_LVL_BORDER[2]}"><div class="cell-main">${esc(name)}</div></td>
     <td style="white-space:pre-wrap">${e.work?esc(e.work):'<span class="muted">–</span>'}</td>
@@ -151,25 +160,14 @@ function entryForm(entry, person){
   /* Đầu việc của dự án – ô "search" (gõ để lọc, core/ui.js) thay cho <select> gom nhóm cũ: dự án thật có
      thể cả trăm đầu việc (xem file mẫu Excel của phòng), cuộn tìm trong <select> rất khó. Danh sách PHẲNG
      (bỏ gom theo hạng mục), nhãn mỗi dòng có đủ đường dẫn phân cấp "chữ cái.La Mã.số" (vd "E.V.1. Đổ tải",
-     "E.V.1.1. Cấu hình dịch vụ") để không mất ngữ cảnh dù không còn gom nhóm – duyệt p._tasks ĐÚNG THỨ TỰ
-     lưu để biết đang ở dưới hạng mục chữ cái/La Mã nào (giống cách model.js tính t.phase, dùng lại
-     msLetterNo()/msRomanNo() chứ không tự suy luận riêng): gặp dòng chữ cái đơn → reset về đúng chữ đó,
-     không còn La Mã; gặp dòng La Mã → nối thêm La Mã vào sau chữ cái; dòng số thường/thập phân → nối thêm
-     chính "No." của nó vào cuối. SẮP XẾP ưu tiên đầu việc CHƯA HOÀN THÀNH (trạng thái mở, OPEN) lên trước –
-     đúng thứ tự PM thường cần nhập trong tuần – rồi mới tới đầu việc đã Hoàn thành/Hủy, giữ nguyên thứ tự
-     gốc trong mỗi nhóm (sort ổn định) – phải tính đường dẫn TRƯỚC khi sắp lại, vì 2 tracker chữ cái/La Mã
-     chỉ đúng khi duyệt theo thứ tự lưu gốc. */
+     "E.V.1.1. Cấu hình dịch vụ") để không mất ngữ cảnh dù không còn gom nhóm – dùng thẳng `t.pathNo` đã
+     tính sẵn theo đúng thứ tự p.tasks ở derive() (model.js, dùng chung với entryTaskLabel() ở trên), không
+     tự duyệt lại ở đây nữa. SẮP XẾP ưu tiên đầu việc CHƯA HOÀN THÀNH (trạng thái mở, OPEN) lên trước – đúng
+     thứ tự PM thường cần nhập trong tuần – rồi mới tới đầu việc đã Hoàn thành/Hủy, giữ nguyên thứ tự gốc
+     trong mỗi nhóm (sort ổn định). */
   const taskOpts = (pid, keepId) => {
     const p = M.pById.get(pid); if(!p) return [];
-    let curLetter = "", curRoman = "";
-    const list = p._tasks.map(t => {
-      const no = String(t.no||"").trim();
-      let path;
-      if(msLetterNo(no)){ curLetter = no.toUpperCase(); curRoman = ""; path = curLetter; }
-      else if(msRomanNo(no)){ curRoman = no.toUpperCase(); path = [curLetter, curRoman].filter(Boolean).join("."); }
-      else path = [curLetter, curRoman, no].filter(Boolean).join(".");
-      return {t, open:OPEN.has(t.status), path};
-    });
+    const list = p._tasks.map(t => ({t, open:OPEN.has(t.status), path:t.pathNo}));
     list.sort((a,b) => (a.open===b.open?0:a.open?-1:1));
     return list.map(({t, path}) => [t.id, (path?path+". ":"")+planShortName(t.dv)+(OPEN.has(t.status)?"":" ("+t.status+")")]);
   };

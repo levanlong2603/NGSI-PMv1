@@ -91,7 +91,7 @@ function derive(){
        hẳn tính năng này vì nhầm số La Mã (I, II…) với chữ cái tiêu đề; nay msLetterNo() loại trừ thẳng
        I/V/X nên hết nhầm. Đầu việc đứng trước dòng chữ cái đơn đầu tiên (nếu có) nhận phase="" (rơi về
        "Khác" ở reports.js/strip() như cũ, không gãy gì). */
-    let curPhaseCode = "", curPhaseName = "";
+    let curPhaseCode = "", curPhaseName = "", curRoman = "";
     const phases = [];
     p._tasks = (p.tasks||[]).map(t => {
       const k = p.id+"|"+t.id;
@@ -136,11 +136,23 @@ function derive(){
         if((status==="Đang làm"||status==="Đang vướng") && (!lastWeek || lastWeek < addDays(thisMon,-14))) warns.push(["warn","Không cập nhật >2 tuần"]);
       }
       const noStr = String(t.no||"").trim();
+      /* pathNo: đường dẫn phân cấp đầy đủ kiểu "E.V.1"/"E.V.1.1" (chữ cái.La Mã.số…) – dùng chung logic
+         với curPhaseCode ở trên (msLetterNo() reset về đúng chữ cái, bỏ La Mã) + thêm curRoman (nối La Mã
+         vào sau chữ cái) để khớp đúng format đã dùng ở ô "search" Đầu việc (taskOpts(), weekly-input.js) –
+         viết 1 lần ở đây để dùng lại mọi nơi cần hiện đường dẫn (vd dòng "Việc trong tuần", inputRow()),
+         thay vì mỗi nơi tự duyệt lại p.tasks riêng. */
+      let pathNo;
       if(msLetterNo(noStr)){
-        curPhaseCode = noStr.toUpperCase(); curPhaseName = t.dv||"";
+        curPhaseCode = noStr.toUpperCase(); curPhaseName = t.dv||""; curRoman = "";
+        pathNo = curPhaseCode;
         if(!phases.some(ph=>ph.code===curPhaseCode)) phases.push({code:curPhaseCode, name:curPhaseName});
+      } else if(msRomanNo(noStr)){
+        curRoman = noStr.toUpperCase();
+        pathNo = [curPhaseCode, curRoman].filter(Boolean).join(".");
+      } else {
+        pathNo = [curPhaseCode, curRoman, noStr].filter(Boolean).join(".");
       }
-      const o = {...t, p, key:k, qmE:qm, ptE:pt, wl, status, src, ms, nn, upd, lastNote, updDate, lastWeek, doers, done, ontime, warns, phase:curPhaseCode, phaseName:curPhaseName};
+      const o = {...t, p, key:k, qmE:qm, ptE:pt, wl, status, src, ms, nn, upd, lastNote, updDate, lastWeek, doers, done, ontime, warns, phase:curPhaseCode, phaseName:curPhaseName, pathNo};
       tasks.push(o); return o;
     });
     const live = p._tasks.filter(t => t.status!=="Hủy");
@@ -191,7 +203,9 @@ function weekIssues(){
   if(!S.canEdit) list = list.filter(e=>e.person===S.me);
   return list.sort((a,b)=>(b.ms||0)-(a.ms||0));
 }
-/* t.phase luôn rỗng (xem bình luận ở derive() – bỏ hẳn việc tự suy luận hạng mục từ "No." vì không phân
-   biệt chắc chắn được chữ cái mã hạng mục với số La Mã của nhánh con), hàm này giữ lại để nơi gọi không
-   phải rẽ nhánh riêng cho task thô (vd e.ref.t trong M.entries) và task đã derive(). */
+/* e.ref.t (M.entries, derive() ở trên) là task THÔ lấy từ taskMap – taskMap dựng từ p.tasks TRƯỚC khi vòng
+   lặp enrich p._tasks chạy (thứ tự cố ý: entries cần ref sớm hơn), nên e.ref.t KHÔNG có các field tính
+   thêm (phase, pathNo, wl…). 2 hàm tra lại dưới đây đọc đúng bản đã enrich trong p._tasks theo id, để nơi
+   gọi không phải tự rẽ nhánh riêng cho task thô (vd e.ref.t) và task đã derive(). */
 function taskPhase(p, taskId){ const t = (p._tasks||[]).find(x=>x.id===taskId); return t ? t.phase : ""; }
+function taskPathNo(p, taskId){ const t = (p._tasks||[]).find(x=>x.id===taskId); return t ? t.pathNo : ""; }

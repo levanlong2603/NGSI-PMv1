@@ -206,6 +206,22 @@ nút `+`/`✕` mỗi dòng (`ACTIONS["addcatrow"]`/`["delcatrow"]`) chèn/xoá n
   giữ nguyên chữ ký, giờ trả đúng `t.phase` thật. **Đừng** đổi lại `msLetterNo()` sang suy luận khác (vd
   thêm điều kiện độ dài `no`) nếu chưa kiểm chứng lại với dữ liệu thật – bài học cũ vẫn còn giá trị: số La
   Mã nhiều ký tự (II, III…) không mơ hồ, chỉ 3 ký tự đơn "I"/"V"/"X" mới cần quy ước cứng này.
+  - **`t.pathNo`** (`model.js`, `derive()`, tính ngay cạnh `t.phase` – dùng chung `curPhaseCode` + thêm
+    tracker `curRoman`): đường dẫn phân cấp ĐẦY ĐỦ kiểu "E.V.1"/"E.V.1.1" (chữ cái.La Mã.số…, khác `t.phase`
+    chỉ dừng ở cấp chữ cái) – gặp dòng chữ cái đơn thì reset (bỏ La Mã), gặp La Mã thì nối sau chữ cái, gặp
+    số thường/thập phân thì nối `t.no` vào cuối chuỗi hiện có. Trước đây chỉ tính RIÊNG trong `taskOpts()`
+    (ô "search" chọn Đầu việc ở Nhập theo tuần, `weekly-input.js`) để hiện gợi ý kiểu "E.V.1. Đổ tải"; nay
+    chuyển lên `derive()` tính 1 lần cho mọi đầu việc, dùng lại ở cả `entryTaskLabel(e)` (`weekly-input.js`,
+    dùng cho `inputRow()`/`inputAllRow()` – dòng "Việc trong tuần" hiện tên kèm đường dẫn y hệt lúc chọn
+    trong ô search, theo yêu cầu người dùng) lẫn `taskOpts()` (đọc thẳng `t.pathNo` từ `p._tasks`, không tự
+    duyệt lại). **`taskPathNo(p, taskId)`** (`model.js`, viết cùng chỗ với `taskPhase()` có sẵn) là cách
+    **BẮT BUỘC** để đọc `pathNo` từ `M.entries` – `e.ref.t` ở đây là task THÔ lấy qua `taskMap` (dựng từ
+    `p.tasks` TRƯỚC khi vòng lặp enrich `p._tasks` chạy trong `derive()`, xem bình luận tại `taskMap`),
+    nên **`e.ref.t.pathNo` luôn `undefined`** – lần đầu viết `entryTaskLabel()` đọc thẳng field này nên bị
+    rỗng y hệt bug cũ `e.ref.t.phase` mà `taskPhase()` từng phải vá (comment cũ ở đó), phải sửa lại tra qua
+    `taskPathNo(e.ref.p, e.ref.t.id)` mới ra đúng giá trị. Nơi nào cần hiện "đường dẫn phân cấp" của 1 đầu
+    việc mà chỉ có `M.entries`/`e.ref` trong tay (không phải `p._tasks`) thì PHẢI dùng `taskPathNo()`, đọc
+    thẳng `t.pathNo` chỉ an toàn khi `t` chắc chắn lấy từ `p._tasks` (như trong `taskOpts()`).
 - Màn "Kế hoạch dự án" (`planTreeRows()`, `plan.js`) và "Tổng quan dự án" hiện đầu việc **phẳng hoàn toàn**
   theo đúng thứ tự `p.tasks` (không gấp/mở theo hạng mục nữa, theo đúng yêu cầu người dùng) – `t.no` chỉ
   hiện như 1 nhãn nhỏ đầu dòng (`planTaskRow()`).
