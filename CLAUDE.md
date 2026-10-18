@@ -339,6 +339,10 @@ nút `+`/`✕` mỗi dòng (`ACTIONS["addcatrow"]`/`["delcatrow"]`) chèn/xoá n
   → mục con hiện ra, đóng lại không mất đi được ("Báo cáo đang không thu lại được"). Phải thêm riêng
   `.nav-sub[hidden]{display:none}` mới đúng. Bất kỳ phần tử nào vừa đặt `display` qua CSS vừa dùng thuộc
   tính `hidden` để ẩn/hiện đều cần ghi đè `[hidden]{display:none}` kiểu này, không tự suy ra được.
+  **Tự thu nhóm khi sang trang khác**: `renderNav()` reset `S.navOpen = {}` mỗi khi `S.view` khác lần vẽ trước
+  (`S.navOpenView`) → chỉ còn mở nhóm chứa trang đang xem; mở/thu tay chỉ giữ được trong lúc vẫn ở cùng 1 trang
+  (theo yêu cầu người dùng: "chọn mục khác không phải Báo cáo thì tự thu lại"). Đặt trong `renderNav()` chứ
+  không ở handler click menu, để cả các đường chuyển trang từ nội dung (vd "← Quay lại tổng quan") cũng thu.
   **Nút CHA không tô nền/thanh viền trái khi active nữa** (`.nav-grp-toggle.active`, `base.css`) – lúc đầu
   tô y hệt `[aria-current="page"]` (nền đặc + thanh viền trái), nhưng mục CON đang chọn ngay bên dưới cũng
   tô y hệt → nhìn như "2 thanh active" cùng lúc, rối mắt. Theo yêu cầu người dùng (đối chiếu lại ảnh tham

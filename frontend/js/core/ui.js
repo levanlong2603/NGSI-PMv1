@@ -12,7 +12,10 @@ function renderNav(){
      có trang riêng); bấm mục con gọi `child.act()` (module tự set state của nó) rồi mới đổi `S.view`.
      Sidebar thu gọn (body.side-collapsed, chỉ còn icon): ẩn hẳn khối mục con (plan.css… không, xem base.css
      `body.side-collapsed .nav-sub`) vì không đủ chỗ hiện chữ – hạn chế đã biết, chưa xử lý xổ nổi kiểu
-     flyout khi thu gọn, để sau nếu được yêu cầu. */
+     flyout khi thu gọn, để sau nếu được yêu cầu.
+     Đổi sang trang khác (bất kể từ menu hay nút trong nội dung, vd "← Quay lại tổng quan") → bỏ trạng thái
+     mở/thu tay của mọi nhóm, quay về mặc định: chỉ mở nhóm chứa trang đang xem (nhóm khác tự thu lại). */
+  if(S.navOpenView !== S.view){ S.navOpen = {}; S.navOpenView = S.view; }
   const btn = v => {
     if(v.children){
       const active = S.view===v.id;
