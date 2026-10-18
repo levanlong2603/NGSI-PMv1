@@ -501,6 +501,55 @@ nút `+`/`✕` mỗi dòng (`ACTIONS["addcatrow"]`/`["delcatrow"]`) chèn/xoá n
   dương→"⚠ Trễ N ngày") vì `reports.js` không gọi hàm nội bộ của `plan.js` cho phần này (khác cách dùng
   thẳng `planDetail()`/`planGanttPanel()`… ở trên) – **đổi công thức "Đánh giá" ở 1 nơi thì phải đổi luôn cả
   2 nơi** (`plan.js` lẫn `rpExportAssess()` ở `reports.js`), không tự đồng bộ.
+  **CẬP NHẬT TIẾP – Xuất Excel "Báo cáo dự án" gộp lại CHỈ CÒN 1 SHEET** (trước đó 2 sheet "Tổng quan"
+  (bảng Chỉ số/Giá trị) + "Đầu việc" – theo yêu cầu người dùng "xuất chính xác bảng như thế này... không
+  tách sheet"): `rpBuildProjectExport()` giờ trả về đúng 1 `sheets[0]` ("Đầu việc") mang thêm `pre` (mảng
+  mới, mỗi phần tử là 1 dòng giá trị thô đặt TRƯỚC bảng trong CÙNG sheet) chứa 2 dòng tiêu đề/dòng phụ +
+  dòng trống + 2 dòng KPI (nhãn/giá trị, đúng thứ tự dải `stat` trên web) + dòng trống, y hệt bố cục khối
+  `#rp-print` (tiêu đề + dải KPI + bảng) đang hiện trên web/PDF, chỉ khác là PDF chụp ảnh còn Excel phải tự
+  dựng lại từng dòng (ExcelJS không đọc được DOM). **`rpExportExcel()` (cơ chế xuất chung, dùng cho CẢ 3
+  loại báo cáo – Báo cáo tuần/Báo cáo dự án/Báo cáo tổng hợp dự án) đã tổng quát hoá thêm `sh.pre`** – khi
+  sheet có `pre`, dòng tiêu đề cột không còn cố định ở hàng 1 nữa (biến `hr = pre.length+1`): `ws.columns`
+  chỉ còn dùng để đặt `key`/độ rộng (bỏ `header` – gán qua `ws.columns` luôn ghi header vào ĐÚNG hàng 1,
+  không dời được), tiêu đề cột ghi tay vào `headerRow = ws.getRow(hr)` sau khi `pre` rows đã được
+  `ws.addRow()` xong; mọi chỗ còn lại (tô màu đầu cột, viền 4 cạnh, `ySplit` đóng băng, vị trí `mergeCells`)
+  đều tính lại theo `hr` thay vì số `1`/`2` cứng. Sheet KHÔNG có `pre` (Báo cáo tuần/Báo cáo tổng hợp dự án
+  – vẫn tách sheet như cũ, người dùng chỉ yêu cầu đổi riêng Báo cáo dự án) hành vi y hệt trước, không đổi
+  gì – `hr` tự về `1` khi `pre` rỗng/không có. Muốn gộp sheet cho báo cáo khác sau này, chỉ cần thêm `pre`
+  vào đúng `sheets[i]` của hàm `rpBuild...Export()` tương ứng, không cần sửa `rpExportExcel()` thêm.
+  **CẬP NHẬT TIẾP – tiêu đề cột bảng "Đầu việc" đổi sang 2 TẦNG gộp nhóm + màu navy/viền đen** (trước đó
+  1 tầng phẳng, mỗi cột ghép sẵn tên nhóm vào nhãn kiểu "HĐ gốc - Bắt đầu", màu xanh lá mặc định – theo yêu
+  cầu người dùng "tiêu đề xanh đúng cấu trúc như này và border màu đen", đối chiếu đúng cấu trúc 2 tầng của
+  `planDetail()` trên web: 5 cột đơn No./Đầu việc/Trạng thái/Ưu tiên/Phụ trách gộp DỌC 2 hàng + 5 nhóm
+  "Thời gian (ngày)"/4 cặp Kế hoạch (mỗi nhóm gộp NGANG tiêu đề nhóm, 2 cột con Bắt đầu/Kết thúc riêng) +
+  cột đơn Đánh giá gộp dọc). `rpExportExcel()` tổng quát hoá thêm lần 2: `sh.head2` (mảng
+  `[{key,label}|{group,sub:[{key,label},...]}]` theo đúng thứ tự cột) bật nhánh dựng tiêu đề 2 hàng bằng
+  `ws.mergeCells()` (dọc cho cột đơn, ngang cho nhóm) thay cho 1 hàng đơn cũ; `sh.headBg`/`sh.headFg`/
+  `sh.borderColor` (tuỳ chọn, ARGB) ghi đè màu nền/chữ tiêu đề + màu viền mặc định (`RP_XL_HEAD_BG` xanh lá
+  nhạt/`RP_XL_BORDER` xanh lá viền, dùng cho các sheet khác không đổi). **`RP_PROJECT_HEAD2`** (hằng mới,
+  `reports.js`, cạnh `rpBuildProjectExport()`) định nghĩa cấu trúc 2 tầng này 1 lần, `rpProjectHeadFlat()`
+  duỗi phẳng ra để dựng `cols`/độ rộng cột như cũ – **`key` của cột lá PHẢI khác nhãn hiển thị** (nhãn
+  "Bắt đầu"/"Kết thúc" lặp lại ở cả 4 nhóm Kế hoạch, dùng làm `key` sẽ đụng nhau) nên đổi hẳn sang tên
+  trường `task` thật làm key (`hdStart`/`deadline`/`adjStart`/`adjEnd`/`expStart`/`expEnd`/`actStart`/
+  `actEnd`/`daysActual`/`daysProposed`/`no`/`dv`/`status`/`pr`/`owner`/`assess`) – `rows` trong
+  `rpBuildProjectExport()` cũng đổi theo đúng các key này (trước dùng thẳng nhãn hiển thị làm key, nay
+  không còn hợp lệ do trùng). Màu `headBg:"FF1F4E78"`/`headFg:"FFFFFFFF"`/`borderColor:"FF000000"` – khớp
+  đúng `.plan-grid-report` (tiêu đề navy/chữ trắng) trên web, viền đen theo đúng yêu cầu (khác viền xanh lá
+  nhạt mặc định của các sheet/bảng khác, KHÔNG đổi màu viền chung `RP_XL_BORDER`).
+  **CẬP NHẬT TIẾP – độ rộng cột ĐẶT TAY thay vì suy từ độ dài chữ tiêu đề** (xuất thử lần đầu bị lỗi: cột
+  "Đầu việc" cắt cụt tên dài như "TỔNG THỜI GIAN THỰC HIỆN DỰ ÁN", các cột ngày bị Excel tự ngắt dòng giữa
+  chuỗi dd/mm/yyyy kiểu "07/03/202"/"5" – vì mặc định chung `rpExportExcel()` suy độ rộng từ
+  `c.header.length*1.3`, mà tiêu đề 2 tầng ở đây toàn nhãn ngắn "Bắt đầu"/"Kết thúc" nên cột luôn quá hẹp so
+  với dữ liệu thật, bất kể cấu trúc tiêu đề đúng hay sai). Người dùng yêu cầu tham khảo cách 1 dự án Python/
+  openpyxl khác (`D:\Documents\Code Web\pm_ngsi_project\backend\app\modules\reports\xlsx.py`,
+  `Writer.__init__`) đặt tường minh 1 mảng độ rộng theo cột thay vì suy đoán – dự án đó khác hẳn stack
+  (Python/openpyxl, FastAPI, mô hình dữ liệu khác – WBS/rủi ro/gói thầu, không có gì porting trực tiếp
+  được), chỉ mượn ĐÚNG ý tưởng này. `rpExportExcel()` tổng quát hoá thêm: `c.width` tuỳ chọn trên từng phần
+  tử `sh.cols` ghi đè độ rộng; không có thì vẫn rơi về suy từ tiêu đề như cũ (các sheet khác không đổi).
+  **`RP_PROJECT_COL_WIDTH`** (hằng mới, `reports.js`, tra theo đúng `key` của `RP_PROJECT_HEAD2`) đặt độ
+  rộng theo loại dữ liệu thật: `dv` (Đầu việc) 42, `status`/`owner` 16, các cột ngày (`hdStart`/`deadline`/…)
+  12 (đủ cho `dd/mm/yyyy` 10 ký tự không ngắt dòng), `assess` 20, còn lại 8–12. Đổi độ rộng cột nào thì sửa
+  thẳng bảng tra này, không cần đụng `rpExportExcel()`.
   **CẬP NHẬT TIẾP – Xuất PDF thật ra CÓ cần sửa**: "PDF tự khớp sẵn, không cần sửa gì" ở trên SAI – sau khi
   nhúng `planDetail(pr.p)` vào `#rp-print`, Xuất PDF (`rpExportPdf()`) bị hỏng/cắt cụt vì bảng đó mang theo
   2 đặc điểm chỉ dành cho XEM trên "Kế hoạch dự án"/"Báo cáo dự án", html2canvas (thư viện chụp PDF) không
@@ -539,6 +588,31 @@ nút `+`/`✕` mỗi dòng (`ACTIONS["addcatrow"]`/`["delcatrow"]`) chèn/xoá n
   `getComputedStyle()` thật sự trả về CHUỖI gì trên đúng trình duyệt/phiên bản Chromium đang chạy – các
   phiên bản khác nhau serialize màu khác nhau, suy đoán theo trực giác rất dễ sai mà vẫn tưởng đã sửa xong
   vì code chạy không báo lỗi cú pháp.
+  **CẬP NHẬT TIẾP – lỗi THỨ BA, khác hẳn 2 lỗi màu/cuộn dọc ở trên**: sau khi bảng "Đầu việc" có thêm nhiều
+  cột (4 cặp ngày, xem mục "tiêu đề cột 2 TẦNG" ở trên), người dùng báo "bảng pdf vẫn có lỗi không hiển thị
+  hết nội dung" – ảnh chụp PDF chỉ thấy phần GIỮA/PHẢI của bảng (thiếu hẳn cột No./Đầu việc bên trái, thiếu
+  cả vài thẻ KPI đầu dải). **Đã dùng Playwright đo trực tiếp** (không đoán): `.plan-scroll` phải cuộn ngang
+  mới xem hết bảng (`scrollWidth 2058` > `clientWidth 1108`), và `html2canvas` log ra "element located at
+  …with size 1184x6393" – ĐÚNG BẰNG kích thước khung nhìn `#rp-print` lúc CHƯA sửa, dù bảng thật rộng
+  ~2050px. Kết luận: `overflow:visible` (đã set từ trước, xem lỗi cuộn dọc ở trên) chỉ NGỪNG CẮT HÌNH chứ
+  KHÔNG làm khung chứa tự GIÃN RỘNG theo nội dung tràn – html2canvas chỉ chụp đúng
+  `getBoundingClientRect()` của `#rp-print` tại thời điểm đo (không tự mở rộng theo con tràn ra ngoài), nên
+  phần vượt quá luôn bị cắt, bất kể hướng cắt trái/phải phụ thuộc `.plan-scroll.scrollLeft` đang ở đâu lúc
+  bấm "Xuất PDF" (test với `scrollLeft=0` cắt mất bên PHẢI của bảng; test với `scrollLeft=900` mô phỏng
+  đúng tình huống người dùng gặp – cắt mất bên TRÁI, khớp đúng ảnh chụp họ gửi). **Sửa trong CHÍNH `onclone`
+  đã có** (`rpExportPdf()`, `reports.js`): với mỗi `.plan-scroll`, reset `scrollLeft=0` TRƯỚC khi đổi
+  `overflow` (để không phụ thuộc vị trí cuộn ngang hiện tại lúc bấm xuất – luôn xuất từ cột đầu tiên), rồi
+  ép CẢ CHUỖI khung chứa (`.plan-scroll` → `.plan-grid.tbl-wrap` → `.panel-b` → chính `#rp-print`)
+  `width:max-content; max-width:none` – mỗi khung tự co giãn khít theo bề rộng thật của nội dung con thay
+  vì bị khoá theo bề rộng khung nhìn của panel. **Đã xác nhận lại bằng Playwright + `pdfjs-dist`/`node-canvas`
+  (dựng ảnh PNG thật từ file PDF xuất ra, không chỉ đọc log)**: kích thước `#rp-print` được đo lại tăng từ
+  `1184px` → `2132px` (khớp đúng bề rộng bảng thật), và cả 2 tình huống `scrollLeft=0`/`scrollLeft=900`
+  trước khi bấm xuất đều cho RA CÙNG kích thước `2132px` (không còn phụ thuộc vị trí cuộn) – ảnh PDF dựng
+  lại cho thấy đủ cả 7 thẻ KPI lẫn đủ 16 cột bảng từ No. tới Đánh giá. **Bài học**: `overflow:visible` một
+  mình không đủ để "chụp hết nội dung tràn" bằng html2canvas – phải tự ép khung chứa GIÃN RỘNG theo đúng
+  nội dung (`width:max-content`), không chỉ gỡ clip; nếu sau này gặp lại kiểu "PDF cắt mất 1 phần bảng
+  rộng/cuộn ngang" ở chỗ khác trong `#rp-print`, áp dụng đúng cặp đôi này (reset `scrollLeft` + ép
+  `width:max-content` suốt chuỗi tổ tiên tới `#rp-print`), không chỉ đổi `overflow`.
   **Nút "← Quay lại tổng quan"** (trang `ovDetailHeader()` cũ có, bị mất khi bỏ trang đó) đã thêm lại ở
   ngay thanh chọn dự án của `rpProjectContent()` (`reports.js`, cạnh nút "Xuất báo cáo") – dùng thẳng
   `data-act="godash"` có sẵn (giống nút "Xem tất cả" ở Dashboard, `exec-dashboard.js`: `S.view="dash";
@@ -732,8 +806,108 @@ nút `+`/`✕` mỗi dòng (`ACTIONS["addcatrow"]`/`["delcatrow"]`) chèn/xoá n
     không giới hạn gì) – đừng tự ý gán `kpiReview: KPI_ROLES` vào đó nếu người dùng chưa yêu cầu ẩn dữ liệu
     đánh giá của người khác.
 
+## Tính lại lịch đầu việc theo công thức (`frontend/js/core/schedule.js`, biến `SCHED`) – ĐANG LÀM DẦN
+Yêu cầu người dùng: sửa thời gian 1 đầu việc → bấm Lưu → hiện danh sách việc bị ảnh hưởng, chọn "Áp dụng
+toàn bộ" / "Chỉ việc này" / "Hủy". Làm theo thứ tự đã thống nhất: (1) engine + test **[XONG]** → (2) form
+nhập phụ thuộc + API preview/apply **[XONG]** → (3) modal xem trước **[XONG]** → (4) cảnh báo "Lệch lịch với
+việc phụ thuộc" **[XONG]** → (5) "Nhập Excel" đọc công thức để tự gán phụ thuộc + nút gắn lại cho dự án cũ
+**[XONG – nhưng 3 dự án thật CHƯA được gắn]**: người dùng tự bấm nút "Gắn phụ thuộc từ Excel" trên từng dự
+án (cần đúng file Excel gốc trên máy họ), đã test trên BẢN SAO dự án BRCD rồi xoá.
+- **Chuyển công thức Excel → `task.sched`**: `SCHED.fromExcel(rows)` (`core/schedule.js`, có test) – đầu vào
+  là công thức + giá trị thô cột F..O từng dòng (`xlsSchedCells()`, `plan.js` – đọc `cell.formula` của ExcelJS
+  để lấy cả công thức "shared" đã dịch đúng dòng). Mẫu nhận được ghi ở chú thích hàm; chọn phụ thuộc chung =
+  phụ thuộc cùng bộ xuất hiện nhiều nhất, bộ khác đè riêng; ngày Kết thúc gõ tay → khoá. Công thức trỏ tới
+  dòng KHÔNG thành đầu việc (No. trống – "Nhập Excel" bỏ các dòng này, vd 44 dòng ở file BRCD) → không gắn
+  được, báo ở `stats.missing`. `SCHED.dropCycles()` bỏ phụ thuộc gây vòng (ưu tiên phụ thuộc trỏ lên tổ tiên).
+- **Đọc dòng NGSI dùng chung**: `planXlsRows(wb)` + `planReadWorkbook(file)` (`plan.js`) – "Nhập Excel" và nút
+  gắn lại khớp dòng ↔ đầu việc theo CÙNG 1 quy tắc lọc dòng. "Nhập Excel" dự án mới nay tự gắn `sched`.
+- **Nút "Gắn phụ thuộc từ Excel"** (`data-act="schedxls"`, cạnh "Sửa thông tin" ở trang chi tiết dự án, chỉ
+  `canManageProject`; xử lý ở `plan-schedule.js` – `schedAttachExcel()`/`schedAttachConfirm()`): khớp dòng
+  với đầu việc theo No. + tên (tiến dần, không quay lại), xem trước thống kê (khớp bao nhiêu dòng, số liên kết
+  FS/SS/FF/copy/khoá, dòng không khớp, công thức chưa hỗ trợ/trỏ tới dòng không có, số việc sẽ báo lệch lịch),
+  lưu bằng PUT thường và CHỈ ghép trường `sched` vào bản dự án mới nhất (không đổi ngày).
+- **Kiểm chứng trên dữ liệu thật** (dry-run 3 file + 3 dự án local): BRCD khớp 121/121, DLP 68/69 (dòng "F
+  THANH TOÁN" không còn trên web), LB 08 87/87; 0 vòng; **0 việc lệch lịch sau khi gắn** (công thức tái hiện
+  đúng 100% ngày đang lưu). Chưa hỗ trợ (giữ nguyên ngày): `N=M`, `O=L+G`, Kết thúc dòng nhóm = Kết thúc 1 dòng
+  con cố định (`I57=I111`), `M=H+G`… (~35 ô/3 file). Sửa "1.2 Mở LC" trên bản sao lan truyền tới 28 việc, phần
+  lớn là dòng nhóm lần đầu được tự tính ngày (trước đó trống "–") – đúng quy tắc "tự động tuỳ dòng".
+- **Máy chủ** `POST /api/doc/projects/:id/schedule` (`backend/server.js`) – `{mode:"preview"|"apply", task,
+  scope:"all"|"self", force, baseVersion}`, `task` = TOÀN BỘ đầu việc sau khi sửa ở form. Máy chủ `require`
+  đúng `core/schedule.js` và TỰ TÍNH LẠI từ bản đang lưu (không tin client), tự suy trạng thái từng việc từ
+  `weeks` (`taskStatusMap()`, cùng cách `derive()`), lọc `sched` qua `SCHED.sanitize()`, bỏ `note`/`eval` với
+  nhân viên (giống PUT). Chặn ghi đè: `version` = sha1 nội dung tài liệu dự án lúc xem trước (`docVersion()`,
+  không thêm cột CSDL), apply mà khác → 409 "xem trước lại". Đọc→kiểm→ghi chạy trong `withDocLock(path)`
+  (khoá tuần tự trong bộ nhớ – máy chủ 1 tiến trình); PUT chung cũng đã bọc khoá này + lọc `task.sched`. Cả
+  dự án là 1 bản ghi nên 1 lần upsert là nguyên tử. Vòng phụ thuộc → 422 kèm `taskIds`.
+- **Lịch sử thay đổi**: bảng `audit` chỉ có `path` 255 ký tự nên chỉ ghi `action="schedule-all|self"`,
+  `path="projects/<id>#<taskId>"`; chi tiết (ai, lúc nào, chọn toàn bộ/chỉ việc này, từng ô cũ→mới, bỏ qua,
+  ghi chú khoá) lưu tài liệu `schedLog/<dự án>__<ms>` – CỐ Ý không thêm vào `RULES`/`COLLECTIONS` (nên không
+  ai PUT/DELETE/GET qua API chung được, chỉ máy chủ ghi), riêng `/api/restore` cho phép giữ lại `schedLog`.
+  Chưa có giao diện xem lại lịch sử này.
+- **Giao diện** `frontend/js/views/plan-schedule.js` (nạp ngay sau `plan.js`): `schedSave()` (xem trước → không
+  việc nào khác bị ảnh hưởng thì lưu luôn, có thì `schedPreviewModal()`), modal tự gắn lớp riêng vào `body`
+  (z-index 35/36, KHÔNG dùng `#layer` vì form đầu việc đang mở trong đó; Esc bắt ở capture +
+  `stopImmediatePropagation` để không đóng luôn form phía sau). Modal: dòng việc đang sửa nổi bật đầu tiên,
+  còn lại gom theo nhóm cấp chữ cái/La Mã, chênh lệch đỏ (muộn hơn)/xanh (sớm hơn), mục "Không tự đổi" kèm
+  lý do, báo ngày kết thúc dự án có đổi không. "Hủy" → đóng và MỞ LẠI form với giá trị trước khi sửa. Lưu
+  xong nháy sáng các dòng đổi (`S.schedFlash`, lớp `.plan-flash` ở `planTaskRow()`).
+- **`taskForm()`** (`plan.js`): thêm "Việc phụ thuộc" (`search`, nhãn theo `pathNo`), "Kiểu phụ thuộc",
+  "Lệch (ngày)", "Cách tính ngày" cho HĐ/HĐ điều chỉnh/Dự kiến (Theo công thức | Nhập tay (khoá); "Khoá 1 ô"
+  chỉ hiện khi đang khoá đúng 1 ô) kèm mô tả quy tắc riêng từng bộ (`schedRuleHint()` – form CHƯA có ô sửa
+  quy tắc riêng, chỉ giữ nguyên), "Dòng nhóm" (Tự tính từ việc con | Có thời gian riêng – chỉ hiện với dòng
+  có con). Dòng nhóm tự tính → khoá các ô ngày/Số ngày/phụ thuộc. CHỈ khi đổi ngày/Số ngày/phụ thuộc/khoá
+  (`schedTouched()`) mới đi đường mới; sửa thứ khác vẫn `saveProject()` như cũ (đã thêm giữ `sched`).
+  Có lệch lịch → khung vàng trong form + nút "Đồng bộ lại theo công thức" (`extraBtn` → `schedSync()`,
+  `force:true`). Cảnh báo bảng: `derive()` thêm `["warn","Lệch lịch với việc phụ thuộc"]` từ `SCHED.drift()`.
+- Đã kiểm thử thật bằng Playwright trên 1 dự án test tạm (đã xoá): 9 kịch bản (Áp dụng toàn bộ, Chỉ việc
+  này + cảnh báo, Đồng bộ lại, Hủy, không ảnh hưởng thì lưu luôn, vòng phụ thuộc, dòng nhóm khoá ô, sửa
+  thứ khác đi đường cũ, 409 khi dữ liệu đổi sau xem trước) – đều đạt.
+- **Phát hiện ngoài phạm vi, CHƯA sửa**: `RULES.kpiReview = "server"` thực tế KHÔNG chặn được tài khoản
+  `FULL_ROLES` vì `canWrite()` trả `true` cho `FULL_ROLES` trước khi xét rule – trưởng/phó phòng vẫn PUT/
+  DELETE thẳng `kpiReview` được (khác mô tả ở mục KPI bên dưới). Sửa thì thêm `if (rule === "server")
+  return false;` lên đầu `canWrite()` – chờ người dùng quyết.
+- **Quy tắc lấy từ công thức thật của 3 file Excel** (`D:\Documents\Code Web\Data_PM\*.xlsx`, sheet NGSI –
+  đã đếm toàn bộ ô bằng ExcelJS, không đoán): Kết thúc = Bắt đầu + Số ngày (`I=H+F`, `K=J+F`, `M=L+G`;
+  `END_OFFSET=0` = "N ngày sau", người dùng đã chốt); F (`daysActual`) dùng cho HĐ + HĐ điều chỉnh, G
+  (`daysProposed`) cho Dự kiến + Thực tế. Phụ thuộc giữa dòng luôn trong CÙNG bộ kế hoạch: FS (`H=I[trước]`,
+  phổ biến nhất), SS (`H=H[trước]` – thường là con theo cha), lệch ngày (`L=M[trước]+2`, hiếm), FF (`H=I−F`
+  với `I=I[khác]`, 6 ô). Giữa các bộ trong cùng dòng: copy (`J=H`, `L=H`/`L=J`, `N=L`, `O=M`). Việc trước có
+  thể cách xa hàng trăm dòng và có dòng dùng việc trước KHÁC NHAU cho từng bộ → mô hình "dùng chung + cho đè
+  riêng từng bộ". Dòng nhóm trong Excel KHÔNG nhất quán (có nhóm tự tính từ con, có nhóm có Số ngày riêng
+  kiểu "từ trên xuống" như "F. Triển khai = 227 ngày") → người dùng chọn "tự động tuỳ dòng": nhóm KHÔNG có
+  F/G → MIN/MAX của con (ghi luôn F/G + `sched.kind="summary"` để lần sau không bị hiểu nhầm thành "có Số
+  ngày riêng"); nhóm CÓ F/G → việc thường.
+- **Lưu ý nhãn**: cột F của Excel tên là "Theo Hợp đồng" nhưng web đang hiện nhãn "Theo thực tế" cho
+  `daysActual` (`plan.js`/`reports.js`) – CHƯA đổi nhãn (chờ người dùng quyết), chỉ ghi nhận.
+- **Phân cấp cha-con suy từ cột No. lúc chạy** (`SCHED.tree()`), KHÔNG lưu `parentId`, không sửa dữ liệu
+  cũ – sửa No. là cấp đổi theo (người dùng chốt). Cấp: chữ cái 1 (trừ I/V/X – luôn là La Mã, cùng quy ước
+  `msLetterNo()` ở `model.js`, đổi 1 nơi phải đổi cả 2) → La Mã 2 → `1` 3 → `1.1` 4 → … (`1.1.1.1` = 6, có
+  thật trong dự án DLP). Cha = dòng gần nhất phía trên có cấp nhỏ hơn; No. trống/chữ tự do = con của dòng có
+  số gần nhất phía trên và KHÔNG làm cha của dòng trống kế tiếp. Khác hẳn heuristic cũ đã bỏ (xem "Khung
+  mẫu"): không đoán theo ngữ cảnh, số chấm quyết định cấp nên không mơ hồ.
+- **Dữ liệu mới `task.sched`** (tuỳ chọn – việc cũ không có = không phụ thuộc, hành vi y như trước): `pred`/
+  `type` (FS/SS/FF)/`lag` dùng chung 4 bộ; `plans.{hd|adj|exp|act}.start|end` ghi đè từng bộ (`dep`/`copy`/
+  `dur` có `src`/`days`); `lock.{trường ngày}` = nhập tay, không bị lan truyền ghi đè; `kind`.
+- **Engine chỉ tính lại phần BỊ ẢNH HƯỞNG** (`recalc(tasks, edit, opts)`): nút (việc|bộ) chỉ tính lại khi là
+  bộ vừa sửa của việc đang sửa hoặc có đầu vào vừa ĐỔI GIÁ TRỊ, theo thứ tự topo → dữ liệu cũ lệch công thức
+  không bị "sửa hộ". Form gửi cả bộ trường nên engine tự so với giá trị cũ, chỉ trường khác mới tính là sửa.
+  Sửa Kết thúc ở bộ chủ của Số ngày (HĐ cho F, Dự kiến cho G) → tính lại Số ngày; sửa Kết thúc HĐ điều chỉnh
+  → KHOÁ ô đó, KHÔNG đổi F (nếu không sửa ngày điều chỉnh sẽ kéo dịch luôn Kế hoạch theo HĐ gốc – lệch có chủ
+  đích so với tài liệu yêu cầu, đã ghi chú để báo người dùng). Sửa tay Bắt đầu của việc đang có phụ thuộc →
+  tự khoá ô đó (`notes` trả về để hiện cho người dùng biết). Thực tế: đã có giá trị = khoá; việc "Hoàn
+  thành" (`opts.status`) không bao giờ đổi ngày thực tế; ô trống vẫn được điền theo quy tắc (hiện ở xem
+  trước để người dùng chọn). `opts.scope="self"` = "Chỉ việc này" (bỏ cạnh `dep`, vẫn cập nhật dòng nhóm
+  cha); `opts.force` = "Đồng bộ lại theo công thức"; `drift()` cho cảnh báo lệch lịch. Vòng phụ thuộc (kể cả
+  con SS theo nhóm tự tính – nhóm lấy MIN của con nên thành vòng) → `{ok:false, error:{type:"cycle"}}`.
+- **Ngày**: chuỗi `YYYY-MM-DD` quy về số ngày UTC trong `addDays`/`diffDays` riêng của file này (KHÔNG dùng
+  `parse()` giờ địa phương của `utils.js`) – không lệch theo múi giờ; đổi sang ngày làm việc chỉ sửa 2 hàm đó.
+- File chạy được cả Node (`require`) để máy chủ tính lại ở bước (2); nạp trong `index.html` ngay trước
+  `model.js`. Test: `tests/schedule.test.js` bằng `node:test` có sẵn (repo không có framework test nào,
+  người dùng chọn không cài thêm) – chạy `npm test`.
+
 ## Lệnh
 - Máy cá nhân: `.env` đặt `DB_CLIENT=sqlite`, `DATA_DIR=./data`.
+- Test engine tính lịch: `npm test` (`node --test`, không cần cài gì thêm).
 - Chạy phát triển (tự khởi động lại khi sửa backend/server.js): `npm run dev` → http://127.0.0.1:3000
 - Tạo tài khoản: `npm run user -- create`
 - Kiểm tra cú pháp: `node --check backend/server.js` và `for f in frontend/js/**/*.js; do node --check "$f"; done`

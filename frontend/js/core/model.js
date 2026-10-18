@@ -93,6 +93,10 @@ function derive(){
        "Khác" ở reports.js/strip() như cũ, không gãy gì). */
     let curPhaseCode = "", curPhaseName = "", curRoman = "";
     const phases = [];
+    /* "Lệch lịch với việc phụ thuộc": Bắt đầu đang lưu ≠ giá trị theo công thức phụ thuộc (thường do chọn
+       "Chỉ việc này" khi sửa việc trước) – tính động, không lưu; sửa bằng "Đồng bộ lại theo công thức" trong
+       chi tiết đầu việc (plan.js). Xem core/schedule.js. */
+    const schedDrift = (p.tasks||[]).some(t=>t.sched) ? SCHED.drift(p.tasks) : new Map();
     p._tasks = (p.tasks||[]).map(t => {
       const k = p.id+"|"+t.id;
       const qm = t.qm, pt = t.pt;
@@ -135,6 +139,7 @@ function derive(){
         if(OPEN.has(status) && (ms||0) >= 3) warns.push(["bad","Ma sát cao"]);
         if((status==="Đang làm"||status==="Đang vướng") && (!lastWeek || lastWeek < addDays(thisMon,-14))) warns.push(["warn","Không cập nhật >2 tuần"]);
       }
+      if(schedDrift.has(t.id)) warns.push(["warn","Lệch lịch với việc phụ thuộc"]);
       const noStr = String(t.no||"").trim();
       /* pathNo: đường dẫn phân cấp đầy đủ kiểu "E.V.1"/"E.V.1.1" (chữ cái.La Mã.số…) – dùng chung logic
          với curPhaseCode ở trên (msLetterNo() reset về đúng chữ cái, bỏ La Mã) + thêm curRoman (nối La Mã

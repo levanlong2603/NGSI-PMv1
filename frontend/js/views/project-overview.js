@@ -87,12 +87,14 @@ function projStatusText(p){
   return ["Đang thực hiện","info"];
 }
 /* Bảng danh sách dự án (Tổng quan dự án) – đúng theo mẫu người dùng đưa (#/Tên dự án/Khách hàng/PM/Bắt
-   đầu/Kết thúc/% HT/Trạng thái/Đánh giá/⋮), gộp hết các loại dự án vào 1 bảng duy nhất (không còn chia
+   đầu/Kết thúc/Tiến độ/Trạng thái/Đánh giá/⋮), gộp hết các loại dự án vào 1 bảng duy nhất (không còn chia
    theo Loại thành từng khối/tiêu đề riêng như trước – đã bỏ theo yêu cầu người dùng), sắp theo cột đang
    chọn (S.ovSort). "Khách hàng" = `p.client` (trường mới, nhập ở `projectForm()`, plan.js – dự án cũ
    trước khi có trường này hiện rỗng/"–"). KHÔNG có cột "Mã dự án" (đã bỏ theo yêu cầu người dùng – `p.id`
    là slug tự sinh từ tên, dài và không có ý nghĩa để hiển thị, vd "p-du-an-nang-cao-..."); tên dự án tô
-   màu teal thay vào vị trí "liên kết" đó. Bấm vào 1 dòng (ngoài menu ⋮) mở THẲNG trang chi tiết đúng dự án
+   màu teal thay vào vị trí "liên kết" đó. **Chỉ riêng tên dự án** (`div.cell-main`, không phải cả `<tr>`
+   – trước đó cả dòng bấm được đâu cũng mở, đã thu hẹp lại theo yêu cầu người dùng) mang `data-act="goplan"`
+   mở THẲNG trang chi tiết đúng dự án
    đó (data-act="goplan", core/events.js – đặt S.projOpenId, xem viewProject() ở trên). Menu ⋮ (S.ovMenuOpen,
    giữ id dự án đang mở – chỉ 1 menu mở tại 1 thời điểm) cho "Xem chi tiết" (giống hệt bấm dòng) và "Sửa
    thông tin" (mở thẳng projectForm(p), plan.js – chỉ hiện nếu canManageProject(p), cùng điều kiện với nút
@@ -130,7 +132,7 @@ function ovTable(P, q){
      đợi). Bảng này không nhiều cột bằng Kế hoạch dự án nên không thật cần cuộn ngang riêng – overflow:visible
      để menu thoát ra ngoài bình thường, lỡ màn quá hẹp thì cuộn cả trang thay vì cuộn trong khung bảng. */
   let out = `<section class="panel"><div class="tbl-wrap" style="overflow:visible"><table><thead><tr>
-    <th style="width:36px">#</th>${th("name","Tên dự án")}${th("client","Khách hàng")}${th("pm","PM")}${th("start","Bắt đầu")}${th("end","Kết thúc")}${th("prog","% HT")}<th>Trạng thái</th><th>Đánh giá</th><th style="width:36px"></th>
+    <th style="width:36px">#</th>${th("name","Tên dự án")}${th("client","Khách hàng")}${th("pm","PM")}${th("start","Bắt đầu")}${th("end","Kết thúc")}${th("prog","Tiến độ")}<th>Trạng thái</th><th>Đánh giá</th><th style="width:36px"></th>
     </tr></thead><tbody>`;
   if(!ps.length){
     out += `<tr><td colspan="10"><div class="empty">${q?`Không có dự án nào khớp “${esc(S.dashQuery)}”.`:'Chưa có dự án nào. Bấm "+ Dự án mới" ở trên để tạo.'}</div></td></tr>`;
@@ -139,9 +141,9 @@ function ovTable(P, q){
     const dr = projDateRange(p);
     const [stText, stTone] = projStatusText(p);
     const menuOpen = S.ovMenuOpen===p.id;
-    out += `<tr class="click" data-act="goplan" data-id="${esc(p.id)}" tabindex="0">
+    out += `<tr>
       <td class="small muted">${i+1}</td>
-      <td><div class="cell-main" style="color:var(--teal-hover)">${esc(p.name)}</div><div class="small muted">${esc(p.type)}</div></td>
+      <td><div class="cell-main" data-act="goplan" data-id="${esc(p.id)}" tabindex="0" style="color:var(--teal-hover); cursor:pointer">${esc(p.name)}</div><div class="small muted">${esc(p.type)}</div></td>
       <td>${esc(p.client||"–")}</td>
       <td>${esc(p.pm||p.owner||"–")}</td>
       <td>${dr.start?dmy(dr.start):"–"}</td>

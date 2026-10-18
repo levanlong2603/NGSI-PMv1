@@ -163,7 +163,7 @@ function planDetail(p, extra, noTools){
      đâu bấm cũng ra đúng kết quả. */
   let out = `<div class="pdetail">
     <div class="toolbar" style="margin-bottom:12px; justify-content:space-between">
-      <div>${extra ? (canManageProject(p)?`${canDeleteProject(p)?`<button class="btn danger" data-act="delp" data-id="${esc(p.id)}">Xoá dự án</button>`:""}<button class="btn" data-act="editp" data-id="${esc(p.id)}">Sửa thông tin</button>`:"")
+      <div>${extra ? (canManageProject(p)?`${canDeleteProject(p)?`<button class="btn danger" data-act="delp" data-id="${esc(p.id)}">Xoá dự án</button>`:""}<button class="btn" data-act="editp" data-id="${esc(p.id)}">Sửa thông tin</button><button class="btn" data-act="schedxls" data-id="${esc(p.id)}" title="Đọc công thức trong file Excel tiến độ gốc của dự án để gắn phụ thuộc giữa các đầu việc – không đổi ngày nào">Gắn phụ thuộc từ Excel</button><input type="file" accept=".xlsx" id="schedXlsFile" data-pid="${esc(p.id)}" hidden>`:"")
         : (noTools ? "" : `<button class="btn${ganttOpen?" primary":""}" data-act="plangantt" data-id="${esc(p.id)}" aria-pressed="${ganttOpen}">Tiến độ theo tuần</button>
         <button class="btn${urgentOpen?" primary":""}" data-act="planurgent" data-id="${esc(p.id)}" aria-pressed="${urgentOpen}">Đầu việc khẩn cấp</button>
         <button class="btn${payOpen?" primary":""}" data-act="planpay" data-id="${esc(p.id)}" aria-pressed="${payOpen}">Mốc thanh toán</button>`)}</div>
@@ -351,7 +351,8 @@ function planTaskRow(t, i, lvl=1, p, extra){
   /* Tô nền cả dòng theo Trạng thái từng thử (bảng chú giải màu sheet Infor) nhưng người dùng phản hồi muốn
      bảng trắng như cũ, CHỈ giữ màu nổi bật ở dòng hạng mục chữ cái (hdrKind="a") – đã bỏ class plan-st-*,
      xem CSS .plan-st-* ở plan.css vẫn giữ lại (không xoá) phòng khi cần dùng lại, chỉ không gắn ở đây nữa. */
-  return `<tr class="click${idle?" tr-idle":""}${hdrKind?" plan-hdr-"+hdrKind:""}" data-act="task" data-id="${esc(t.id)}" tabindex="0" title="${esc(t.dv)}">
+  const flash = S.schedFlash && S.schedFlash.until > Date.now() && S.schedFlash.ids.has(t.id);
+  return `<tr class="click${idle?" tr-idle":""}${hdrKind?" plan-hdr-"+hdrKind:""}${flash?" plan-flash":""}" data-act="task" data-id="${esc(t.id)}" tabindex="0" title="${esc(t.dv)}">
       <td class="plan-no">${hdrKind?`<span class="plan-no-tag plan-no-${hdrKind}">${esc(t.no||"–")}</span>`:esc(t.no||"–")}${canAct?`<div class="plan-rowacts">
         <button type="button" data-act="taskinsert" data-pid="${esc(p.id)}" data-id="${esc(t.id)}" data-dir="up" title="Chèn dòng lên trên">↑+</button>
         <button type="button" data-act="taskinsert" data-pid="${esc(p.id)}" data-id="${esc(t.id)}" data-dir="down" title="Chèn dòng xuống dưới">↓+</button>
@@ -416,16 +417,53 @@ function xlsNum(v){ v=xlsVal(v); if(v==null||v==="-"||v==="") return null; const
 /* "No." kiểu "1.1000000000000001" (lỗi làm tròn số thực của Excel khi gõ "1.1" vào ô định dạng số) → "1.1" */
 function xlsCleanNo(v){ const s=xlsText(v); const n=Number(s); if(isFinite(n) && s.includes(".")) return String(Math.round(n*1000)/1000); return s; }
 const XLS_STATUS_MAP = {"Đang thực hiện":"Đang làm","Hoàn thành":"Hoàn thành","Chưa bắt đầu":"Chưa bắt đầu","Pending":"Tạm dừng","Chờ Nghiệm thu":"Đang làm"};
+/* Công thức + giá trị thô các cột F..O của 1 dòng sheet NGSI – đầu vào cho SCHED.fromExcel() (core/schedule.js)
+   để chuyển công thức Excel thành phụ thuộc giữa các đầu việc. `cell.formula` của ExcelJS trả về cả công thức
+   "dùng chung" (shared formula) đã dịch đúng theo dòng – không đọc `value.formula` (rỗng ở ô shared). */
+const XLS_SCHED_COLS = {F:6, G:7, H:8, I:9, J:10, K:11, L:12, M:13, N:14, O:15};
+function xlsSchedCells(row){
+  const cells = {};
+  for(const [k, c] of Object.entries(XLS_SCHED_COLS)){
+    const cell = row.getCell(c);
+    let f = null; try{ f = cell.formula || null; }catch(e){}
+    cells[k] = {f, v: f ? null : xlsVal(cell.value)};
+  }
+  return cells;
+}
+/* Đọc workbook đã nạp → {shInfor, rows:[{row, no, dv, r:<ExcelJS Row>}]} – đúng các dòng "Nhập Excel" tạo
+   thành đầu việc (bỏ dòng No./tên trống và các dòng tiêu đề gộp ô). Dùng chung cho nhập dự án mới và nút
+   "Gắn phụ thuộc từ Excel" (plan-schedule.js) để 2 nơi khớp dòng ↔ đầu việc theo CÙNG 1 quy tắc. */
+function planXlsRows(wb){
+  const shInfor = wb.getWorksheet("Infor"), shNgsi = wb.getWorksheet("NGSI");
+  if(!shNgsi) throw new Error('Không tìm thấy sheet "NGSI" trong file – đúng mẫu bảng tiến độ của phòng mới đọc được.');
+  let headerRow = 0;
+  shNgsi.eachRow((row, rn) => { if(!headerRow && xlsText(row.getCell(1).value).trim()==="No.") headerRow = rn; });
+  if(!headerRow) throw new Error('Không tìm thấy dòng tiêu đề (ô "No.") trong sheet "NGSI".');
+  const rows = [];
+  for(let rn=headerRow+1; rn<=shNgsi.rowCount; rn++){
+    const r = shNgsi.getRow(rn);
+    const no = xlsCleanNo(r.getCell(1).value), dv = xlsText(r.getCell(2).value);
+    /* Bỏ dòng trống/phụ đề xen giữa (vd dòng "Theo Thực tế/Theo đề xuất") VÀ bỏ các dòng ngay dưới dòng
+       tiêu đề: ô tiêu đề "No."/"NỘI DUNG CÔNG VIỆC" bị gộp dọc (merge) xuống vài dòng, mà ExcelJS tự
+       nhân giá trị ô gộp ra MỌI dòng nằm trong vùng gộp (kể cả đọc qua getCell() như ở đây) – không chỉ
+       dòng đầu tiên – nên nếu không chặn riêng sẽ đọc nhầm 2-3 dòng tiêu đề thành "đầu việc" rỗng dữ liệu. */
+    if(!no || !dv || no==="No." || dv==="NỘI DUNG CÔNG VIỆC") continue;
+    rows.push({row:rn, no, dv, r});
+  }
+  return {shInfor, rows};
+}
+async function planReadWorkbook(file){
+  await planEnsureExcel();
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(await file.arrayBuffer());
+  return wb;
+}
 ACTIONS["planimport"] = () => { const el = document.getElementById("planImportFile"); if(el) el.click(); };
 async function planImportExcel(file){
   toast("Đang đọc file…");
   try{
-    await planEnsureExcel();
-    const buf = await file.arrayBuffer();
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buf);
-    const shInfor = wb.getWorksheet("Infor"), shNgsi = wb.getWorksheet("NGSI");
-    if(!shNgsi) throw new Error('Không tìm thấy sheet "NGSI" trong file – đúng mẫu bảng tiến độ của phòng mới đọc được.');
+    const wb = await planReadWorkbook(file);
+    const {shInfor, rows} = planXlsRows(wb);
     // ----- sheet Infor: lấy PM/TM/AM/ACC/Tên dự án theo nhãn ở cột B, giá trị ở cột C (không khoá cứng số dòng) -----
     const info = {};
     if(shInfor){
@@ -434,21 +472,10 @@ async function planImportExcel(file){
         if(label) info[label] = row.getCell(3).value;
       });
     }
-    // ----- sheet NGSI: tự tìm dòng tiêu đề (ô cột A = "No.") thay vì khoá cứng số dòng -----
-    let headerRow = 0;
-    shNgsi.eachRow((row, rn) => { if(!headerRow && xlsText(row.getCell(1).value).trim()==="No.") headerRow = rn; });
-    if(!headerRow) throw new Error('Không tìm thấy dòng tiêu đề (ô "No.") trong sheet "NGSI".');
     const tasks = [];
-    for(let rn=headerRow+1; rn<=shNgsi.rowCount; rn++){
-      const row = shNgsi.getRow(rn);
-      const no = xlsCleanNo(row.getCell(1).value), dv = xlsText(row.getCell(2).value);
-      /* Bỏ dòng trống/phụ đề xen giữa (vd dòng "Theo Thực tế/Theo đề xuất") VÀ bỏ các dòng ngay dưới dòng
-         tiêu đề: ô tiêu đề "No."/"NỘI DUNG CÔNG VIỆC" bị gộp dọc (merge) xuống vài dòng, mà ExcelJS tự
-         nhân giá trị ô gộp ra MỌI dòng nằm trong vùng gộp (kể cả đọc qua getCell() như ở đây) – không chỉ
-         dòng đầu tiên – nên nếu không chặn riêng sẽ đọc nhầm 2-3 dòng tiêu đề thành "đầu việc" rỗng dữ liệu. */
-      if(!no || !dv || no==="No." || dv==="NỘI DUNG CÔNG VIỆC") continue;
+    for(const {row:rn, no, dv, r:row} of rows){
       tasks.push({
-        no, dv,
+        no, dv, _row:rn, _cells:xlsSchedCells(row),
         status: XLS_STATUS_MAP[xlsText(row.getCell(3).value)] || "",
         owner: xlsText(row.getCell(5).value),
         daysActual: xlsNum(row.getCell(6).value), daysProposed: xlsNum(row.getCell(7).value),
@@ -486,7 +513,7 @@ function planImportConfirm(parsed){
     onSave: async x => {
       if(!x.name.trim()) throw new Error("Nhập tên dự án.");
       let id = "p-"+slug(x.name); if(M.pById.get(id)) id += "-"+Math.random().toString(36).slice(2,5);
-      const tasks = parsed.tasks.map((t,i) => {
+      let tasks = parsed.tasks.map((t,i) => {
         const cat = S.catalog.find(c=>c.type===x.type && c.no===t.no);
         return {id:"t"+String(i+1).padStart(3,"0"), no:t.no, dv:t.dv, detail:"",
           owner:t.owner||"", collab:"", deadline:t.deadline, hdStart:t.hdStart,
@@ -495,11 +522,15 @@ function planImportConfirm(parsed){
           pr: cat ? (cat.pr==="Cao"?"Cao":"Bình thường") : "Bình thường",
           init:{status:t.status||"", ms:null, nn:""}, note:t.note||"", eval:{}};
       });
+      /* Chuyển công thức Excel của từng dòng (H22=I21…) thành phụ thuộc giữa các đầu việc (task.sched) để sửa
+         thời gian trên web tự lan truyền như Excel – xem SCHED.fromExcel() (core/schedule.js). */
+      const xs = SCHED.fromExcel(parsed.tasks.map((t,i) => ({row:t._row, id:tasks[i].id, cells:t._cells||{}})));
+      tasks = SCHED.dropCycles(tasks.map(t => { const s = xs.sched.get(t.id); return s ? {...t, sched:s} : t; })).tasks;
       const roleFields = {owner:x.tm||x.pm||"", se:"", pm:x.pm||"", tm:x.tm||"", am:x.am||"", acc:x.acc||""};
       const order = Math.max(0,...M.projects.map(q=>q.order||0))+1;
       await saveProject({id, name:x.name.trim(), client:"", type:x.type, ...roleFields,
         milestones:"", progress:"", situation:"", proposal:"", difficulty:1, order, tasks});
-      S.planSel = id; toast(`Đã nhập dự án với ${tasks.length} đầu việc`);
+      S.planSel = id; toast(`Đã nhập dự án với ${tasks.length} đầu việc, ${tasks.filter(t=>t.sched).length} đầu việc có công thức tính lịch`);
     }
   });
 }
@@ -585,10 +616,30 @@ function taskForm(p, t){
      trước, đúng theo yêu cầu người dùng (4 vai trò này là nguồn duy nhất gán người phụ trách đầu việc). */
   const ownerOpts = [["",""],...[...new Set([p.pm,p.tm,p.am,p.acc].filter(Boolean))].map(n=>[n,n])];
   if(!canManageProject(p)){ if(isNew){ toast("Chỉ trưởng phòng hoặc người tạo dự án mới thêm đầu việc."); return; } return openInfo(p, t); }
+  /* Tính lịch theo công thức (core/schedule.js + plan-schedule.js): cấp cha-con suy từ cột No.; dòng nhóm
+     tự tính (MIN/MAX của con) thì khoá các ô ngày/Số ngày – đổi sang "Có thời gian riêng" rồi lưu mới sửa được. */
+  const schedTr = SCHED.tree(p.tasks||[]);
+  const hasKids = !!raw && (schedTr.children.get(raw.id)||[]).length > 0;
+  const isSum = !!raw && SCHED.isSummary(raw, schedTr);
+  const detectedKind = isSum ? "summary" : "task";
+  const sc0 = (raw && raw.sched) || {};
+  Object.assign(v, {dep_pred:sc0.pred||"", dep_type:sc0.type||"FS", dep_lag:sc0.lag||0, kind:detectedKind,
+    mode_hd:schedLockMode(raw,"hd"), mode_adj:schedLockMode(raw,"adj"), mode_exp:schedLockMode(raw,"exp")});
+  const predOpts = [["","— Không phụ thuộc —"], ...(p._tasks||p.tasks||[]).filter(x=>!raw || x.id!==raw.id)
+    .map(x=>[x.id, `${x.pathNo||x.no||""}${(x.pathNo||x.no)?". ":""}${x.dv||"(chưa đặt tên)"}`])];
+  const drift = raw ? (SCHED.drift(p.tasks||[]).get(raw.id) || []) : [];
+  const modeField = pk => {
+    const opts = [["auto","Theo công thức"],["lock","Nhập tay (khoá)"]];
+    if(schedLockMode(raw, pk)==="part") opts.splice(1, 0, ["part","Khoá 1 ô (giữ nguyên)"]);
+    return {key:"mode_"+pk, label:"Cách tính ngày", type:"seg", options:opts, disabled:isSum,
+      hint:m => [m==="lock" ? "Ngày nhập tay, không bị tự đổi khi việc khác thay đổi." : m==="auto" ? "Bắt đầu theo phụ thuộc (nếu có), Kết thúc = Bắt đầu + Số ngày." : "", schedRuleHint(raw, pk, p)].filter(Boolean).join(" · ")};
+  };
   openForm({
     title: isNew ? "Thêm đầu việc" : "Đầu việc", subtitle: p.name, values:v,
-    info: t ? `<div class="kv" style="margin-bottom:16px"><dt>Trạng thái hiện tại</dt><dd>${stPill(t.status)}</dd>
-      <dt>Cập nhật mới nhất</dt><dd>${esc(t.upd||"–")}</dd><dt>Ngày cập nhật</dt><dd>${esc(t.updDate||"–")}</dd></div>` : "",
+    info: (t ? `<div class="kv" style="margin-bottom:16px"><dt>Trạng thái hiện tại</dt><dd>${stPill(t.status)}</dd>
+      <dt>Cập nhật mới nhất</dt><dd>${esc(t.upd||"–")}</dd><dt>Ngày cập nhật</dt><dd>${esc(t.updDate||"–")}</dd></div>` : "")
+      + (drift.length ? `<div class="sched-drift"><b>Lệch lịch với việc phụ thuộc:</b> ${drift.map(d=>`${esc(d.planLabel)} – Bắt đầu đang ${dmy(d.actual)}, theo công thức ${dmy(d.expected)}`).join("; ")}. Bấm “Đồng bộ lại theo công thức” để cập nhật.</div>` : ""),
+    extraBtn: drift.length ? {label:"Đồng bộ lại theo công thức", onClick:() => schedSync(p, raw)} : undefined,
     fields:[
       {key:"no", label:"No.", type:"text", half:true},
       {key:"dv", label:"Đầu việc", type:"text", required:true, half:true},
@@ -615,20 +666,31 @@ function taskForm(p, t){
          chỉ thêm "hdStart" làm ngày bắt đầu đi kèm. 3 cặp còn lại (điều chỉnh/dự kiến/thực tế) là trường
          mới, không ảnh hưởng công thức tính Workload/cảnh báo hiện có. */
       {heading:"Thời gian (ngày)"},
-      {key:"daysActual", label:"Theo thực tế", type:"number", half:true},
-      {key:"daysProposed", label:"Theo đề xuất", type:"number", half:true},
+      ...(hasKids ? [{key:"kind", label:"Dòng nhóm", type:"seg", options:[["summary","Tự tính từ việc con"],["task","Có thời gian riêng"]],
+        hint:k => k==="summary" ? "Bắt đầu = sớm nhất, Kết thúc = muộn nhất của các việc con; Số ngày tự tính." + (isSum ? "" : " Lưu rồi mở lại để thấy ngày tự tính.")
+          : "Nhập ngày/Số ngày như việc thường." + (isSum ? " Lưu rồi mở lại để sửa ngày." : "")}] : []),
+      {key:"daysActual", label:"Theo thực tế", type:"number", half:true, disabled:isSum},
+      {key:"daysProposed", label:"Theo đề xuất", type:"number", half:true, disabled:isSum},
+      {heading:"Phụ thuộc (tự tính lịch)"},
+      {key:"dep_pred", label:"Việc phụ thuộc", type:"search", options:predOpts, placeholder:"Gõ số hoặc tên đầu việc…", disabled:isSum,
+        hint: isSum ? "Dòng nhóm tự tính từ việc con nên không đặt phụ thuộc." : "Ngày của việc này tự đổi theo việc được chọn, trong cùng từng bộ kế hoạch."},
+      {key:"dep_type", label:"Kiểu phụ thuộc", type:"seg", options:[["FS","Nối tiếp (FS)"],["SS","Song song (SS)"],["FF","Kết thúc cùng (FF)"]], disabled:isSum, hint:k=>SCHED_TYPE_HINT[k]||""},
+      {key:"dep_lag", label:"Lệch (ngày)", type:"number", step:1, disabled:isSum, hint:"Âm = sớm hơn, dương = muộn hơn so với mốc của việc phụ thuộc."},
       {heading:"Kế hoạch theo HĐ"},
-      {key:"hdStart", label:"Bắt đầu", type:"date", half:true},
-      {key:"deadline", label:"Kết thúc", type:"date", half:true},
+      {key:"hdStart", label:"Bắt đầu", type:"date", half:true, disabled:isSum},
+      {key:"deadline", label:"Kết thúc", type:"date", half:true, disabled:isSum},
+      modeField("hd"),
       {heading:"Kế hoạch HĐ điều chỉnh"},
-      {key:"adjStart", label:"Bắt đầu", type:"date", half:true},
-      {key:"adjEnd", label:"Kết thúc", type:"date", half:true},
+      {key:"adjStart", label:"Bắt đầu", type:"date", half:true, disabled:isSum},
+      {key:"adjEnd", label:"Kết thúc", type:"date", half:true, disabled:isSum},
+      modeField("adj"),
       {heading:"Kế hoạch dự kiến"},
-      {key:"expStart", label:"Bắt đầu", type:"date", half:true},
-      {key:"expEnd", label:"Kết thúc", type:"date", half:true},
+      {key:"expStart", label:"Bắt đầu", type:"date", half:true, disabled:isSum},
+      {key:"expEnd", label:"Kết thúc", type:"date", half:true, disabled:isSum},
+      modeField("exp"),
       {heading:"Kế hoạch thực tế"},
-      {key:"actStart", label:"Bắt đầu", type:"date", half:true},
-      {key:"actEnd", label:"Kết thúc", type:"date", half:true},
+      {key:"actStart", label:"Bắt đầu", type:"date", half:true, disabled:isSum},
+      {key:"actEnd", label:"Kết thúc", type:"date", half:true, disabled:isSum, hint: isSum ? "" : "Đã có ngày thực tế thì không bị tự đổi."},
       {key:"st0", label:"Trạng thái ban đầu (chỉ dùng khi chưa có dữ liệu tuần)", type:"select", options:[["",""],...ST_ALL.map(s=>[s,s])]},
       /* Chỉ trưởng phòng đánh giá khi hoàn thành, không phải nhân viên (kể cả TM/người tạo được sửa đầu việc) */
       ...(t && t.status==="Hoàn thành" && S.canEdit ? [
@@ -651,6 +713,18 @@ function taskForm(p, t){
         daysActual:x.daysActual??null, daysProposed:x.daysProposed??null, qm:x.qm||null, pt:x.pt||null, pr:x.pr||"",
         init:{status:x.st0||"", ms:x.ms0??null, nn:x.nn0||""}, note:x.note||"", eval: raw&&raw.eval ? {...raw.eval} : {}, updatedAt:Date.now()};
       if(t && t.status==="Hoàn thành" && S.canEdit) body.eval = {dat:x.dat||"", cl:x.cl??null, tc:x.tc??null, nx:x.nx||""};
+      const sched = schedFromForm(raw, x, hasKids, detectedKind);
+      if(sched) body.sched = sched;
+      /* Đổi ngày/Số ngày/phụ thuộc → lưu qua máy chủ tính lại theo công thức (có xem trước việc bị ảnh hưởng,
+         plan-schedule.js). Không đổi gì về lịch → lưu như trước (PUT cả dự án). Hủy ở modal → mở lại form
+         với giá trị TRƯỚC khi sửa (không lưu gì). */
+      if(schedTouched(raw, body)){
+        await schedSave(p, body, {onCancel:() => setTimeout(() => {
+          const pp = M.pById.get(p.id) || p;
+          taskForm(pp, isNew ? null : ((pp._tasks||[]).find(q=>q.id===body.id) || t));
+        }, 0)});
+        return;
+      }
       const i = tasks.findIndex(q=>q.id===body.id); if(i>=0) tasks[i]=body; else tasks.push(body);
       await saveProject({...p, tasks}); toast(isNew?"Đã thêm đầu việc":"Đã lưu đầu việc");
     },

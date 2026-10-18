@@ -15,8 +15,10 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const cookieParser = require("cookie-parser");
+const crypto = require("crypto");
 const { createStore } = require("./lib/store");
 const kpi = require("./lib/kpi");
+const SCHED = require("../frontend/js/core/schedule.js");
 
 /* ---------------- cấu hình (đọc từ file .env) ---------------- */
 const PORT = Number(process.env.PORT) || 3000;
@@ -100,6 +102,21 @@ const publicUser = u => ({ id: u.id, username: u.username, display_name: u.displ
 const audit = (user, action, p) => store.audit(user ? user.username : null, action, p).catch(e => console.error("[audit]", e.message));
 /* bọc route async để lỗi được chuyển về bộ xử lý lỗi chung */
 const A = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+/* Khoá tuần tự theo từng tài liệu: các bước đọc → kiểm tra → ghi của cùng 1 dự án không chen ngang nhau
+   (giữa 2 lệnh await, request khác có thể chạy xen). Máy chủ chạy 1 tiến trình duy nhất nên khoá trong bộ
+   nhớ là đủ. */
+const docLocks = new Map();
+function withDocLock(key, fn) {
+  const prev = docLocks.get(key) || Promise.resolve();
+  const run = prev.catch(() => {}).then(fn);
+  const tail = run.catch(() => {});
+  docLocks.set(key, tail);
+  tail.then(() => { if (docLocks.get(key) === tail) docLocks.delete(key); });
+  return run;
+}
+/* Phiên bản 1 tài liệu = băm nội dung đang lưu – dùng để chặn ghi đè khi người khác vừa sửa giữa lúc xem
+   trước và lúc bấm áp dụng (không cần thêm cột/đổi bảng CSDL). */
+const docVersion = raw => crypto.createHash("sha1").update(raw || "").digest("hex").slice(0, 16);
 
 /* ---------------- realtime (Server-Sent Events) ---------------- */
 const clients = new Set();
@@ -261,11 +278,16 @@ app.put("/api/doc/:coll/:id", auth, A(async (req, res) => {
   if (!COLLECTIONS.has(coll) || !ID_RE.test(id)) return res.status(400).json({ error: "Đường dẫn không hợp lệ" });
   if (!body || typeof body !== "object" || Array.isArray(body)) return res.status(400).json({ error: "Dữ liệu không hợp lệ" });
   const p = `${coll}/${id}`;
+  await withDocLock(p, async () => {
   const ex = await store.getDoc(p);
   const exBody = ex && JSON.parse(ex);
   if (!(await canWrite(req.user, coll, id, body, exBody, "write"))) return res.status(403).json({ error: "Bạn không có quyền sửa phần này" });
   if (coll === "projects") {
     body.created_by = exBody ? (exBody.created_by ?? null) : req.user.username;
+    // Phụ thuộc/khoá ngày của đầu việc (task.sched, xem frontend/js/core/schedule.js): chỉ giữ đúng cấu trúc hợp lệ
+    for (const t of Array.isArray(body.tasks) ? body.tasks : []) {
+      if (t && typeof t === "object" && "sched" in t) { const s = SCHED.sanitize(t.sched); if (s) t.sched = s; else delete t.sched; }
+    }
     // Đánh giá khi hoàn thành (task.eval) và Ghi chú của trưởng phòng (task.note) chỉ trưởng phòng
     // được ghi; nhân viên gửi gì cũng giữ nguyên giá trị cũ (ẩn/khoá ô nhập ở giao diện chỉ là gợi ý,
     // quyền thật sự phải chặn ở đây)
@@ -309,6 +331,7 @@ app.put("/api/doc/:coll/:id", auth, A(async (req, res) => {
   await store.upsertDoc(p, coll, id, JSON.stringify(body), req.user.username);
   audit(req.user, "set", p); broadcast(coll);
   res.status(204).end();
+  });
 }));
 /* Đồng bộ "Độ phức tạp" từ Nhập theo tuần vào đúng đầu việc ở Kế hoạch dự án. Phạm vi hẹp có chủ đích:
    chỉ sửa trường pt của một đầu việc, không đụng gì khác trong dự án — nên cho phép cả nhân viên chỉ là
@@ -356,6 +379,77 @@ app.patch("/api/doc/projects/:id/task-note", auth, A(async (req, res) => {
   await store.upsertDoc(p, "projects", id, JSON.stringify(body), req.user.username);
   audit(req.user, "set", p); broadcast("projects");
   res.status(204).end();
+}));
+/* Trạng thái hiện tại của từng đầu việc = trạng thái ở lượt nhập tuần gần nhất (có trạng thái), không có thì
+   lấy trạng thái ban đầu – cùng cách derive() (frontend/js/core/model.js) suy ra t.status. Dùng cho quy tắc
+   "việc Hoàn thành không bao giờ tự đổi ngày thực tế" khi máy chủ tự tính lại lịch. */
+async function taskStatusMap(projectId, tasks) {
+  const latest = new Map();
+  for (const r of await store.getDocs("weeks")) {
+    const w = JSON.parse(r.body);
+    for (const e of w.entries || []) {
+      if (e.projectId !== projectId || !e.status) continue;
+      const cur = latest.get(e.taskId);
+      if (!cur || w.week > cur.week) latest.set(e.taskId, { week: w.week, status: e.status });
+    }
+  }
+  const out = {};
+  for (const t of tasks) out[t.id] = latest.has(t.id) ? latest.get(t.id).status : ((t.init && t.init.status) || "Chưa bắt đầu");
+  return out;
+}
+/* Sửa thời gian 1 đầu việc có lan truyền theo công thức (frontend/js/core/schedule.js – CÙNG 1 engine với
+   trình duyệt). mode "preview": chỉ tính, không ghi, trả danh sách việc bị ảnh hưởng + version hiện tại.
+   mode "apply": máy chủ TỰ TÍNH LẠI từ dữ liệu đang lưu (không tin danh sách thay đổi trình duyệt gửi), chỉ
+   ghi nếu dự án chưa bị ai đổi kể từ lúc xem trước (baseVersion) – đổi rồi thì 409, bắt xem trước lại.
+   task = toàn bộ đầu việc sau khi sửa ở form (engine tự so với bản đang lưu để biết trường nào đã sửa).
+   scope "all" = Áp dụng toàn bộ, "self" = Chỉ việc này (+ dòng nhóm cha). Cả dự án nằm trong 1 bản ghi nên
+   1 lần upsert là nguyên tử. Lịch sử chi tiết (giá trị cũ/mới từng ô) lưu ở schedLog/<dự án>__<thời điểm>
+   – chỉ máy chủ ghi, không nằm trong COLLECTIONS nên không ai ghi/xoá được qua PUT/DELETE chung. */
+app.post("/api/doc/projects/:id/schedule", auth, A(async (req, res) => {
+  const { id } = req.params;
+  const { mode, task, scope, force, baseVersion } = req.body || {};
+  if (!ID_RE.test(id) || !["preview", "apply"].includes(mode) || !task || typeof task !== "object" || Array.isArray(task)
+    || typeof task.id !== "string" || !ID_RE.test(task.id))
+    return res.status(400).json({ error: "Dữ liệu không hợp lệ" });
+  const p = `projects/${id}`;
+  await withDocLock(p, async () => {
+    const raw = await store.getDoc(p);
+    if (!raw) return res.status(404).json({ error: "Không tìm thấy dự án" });
+    const doc = JSON.parse(raw);
+    if (!(await canWrite(req.user, "projects", id, doc, doc, "write"))) return res.status(403).json({ error: "Bạn không có quyền sửa dự án này" });
+    const version = docVersion(raw);
+    if (mode === "apply" && baseVersion !== version)
+      return res.status(409).json({ error: "Dự án vừa được người khác thay đổi sau lúc bạn xem trước. Vui lòng bấm Lưu để xem trước lại.", code: "stale", version });
+    const tasks = Array.isArray(doc.tasks) ? doc.tasks : [];
+    const isNew = !tasks.some(t => t.id === task.id);
+    const work = isNew ? [...tasks, { id: task.id, no: "", dv: "" }] : tasks;
+    const set = { ...task };
+    delete set.id;
+    if (!FULL_ROLES.has(req.user.role)) { delete set.note; delete set.eval; }
+    if ("sched" in set) set.sched = SCHED.sanitize(set.sched);
+    const status = await taskStatusMap(id, work);
+    const sc = scope === "self" ? "self" : "all";
+    const r = SCHED.recalc(work, { taskId: task.id, set }, { scope: sc, status, force: !!force });
+    if (!r.ok) return res.status(422).json({ error: r.error.message, code: r.error.type, taskIds: r.error.taskIds || [] });
+    if (mode === "preview")
+      return res.json({ version, changes: r.changes, skipped: r.skipped, projectEnd: r.projectEnd, affected: r.affected, notes: r.notes, isNew });
+    const now = Date.now();
+    doc.tasks = r.tasks.map(t => {
+      const o = { ...t };
+      if (o.sched == null) delete o.sched;
+      if (o.id === task.id) o.updatedAt = now;
+      return o;
+    });
+    const out = JSON.stringify(doc);
+    await store.upsertDoc(p, "projects", id, out, req.user.username);
+    audit(req.user, "schedule-" + sc, `${p}#${task.id}`);
+    store.upsertDoc(`schedLog/${id}__${now}`, "schedLog", `${id}__${now}`, JSON.stringify({
+      projectId: id, taskId: task.id, by: req.user.username, at: now, scope: sc,
+      changes: r.changes, skipped: r.skipped, notes: r.notes
+    }), req.user.username).catch(e => console.error("[schedLog]", e.message));
+    broadcast("projects");
+    res.json({ ok: true, version: docVersion(out), changedTaskIds: [...new Set(r.changes.map(c => c.taskId))] });
+  });
 }));
 app.delete("/api/doc/:coll/:id", auth, A(async (req, res) => {
   const { coll, id } = req.params;
@@ -406,7 +500,8 @@ app.post("/api/restore", auth, adminOnly, A(async (req, res) => {
   const rows = [];
   for (const [p, body] of Object.entries(data)) {
     const [coll, id] = p.split("/");
-    if (!COLLECTIONS.has(coll) || !ID_RE.test(id || "")) continue;
+    // schedLog: lịch sử sửa lịch đầu việc, chỉ máy chủ ghi (không nằm trong COLLECTIONS) nhưng vẫn khôi phục lại
+    if ((!COLLECTIONS.has(coll) && coll !== "schedLog") || !ID_RE.test(id || "")) continue;
     rows.push({ path: p, collection: coll, doc_id: id, body: JSON.stringify(body) });
   }
   await store.replaceAllDocs(rows, req.user.username);

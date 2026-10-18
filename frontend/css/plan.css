@@ -119,3 +119,33 @@
 .plan-urgent-hdr .small{font-weight:600; opacity:.85; margin-left:4px}
 .plan-urgent-a{background:#8B0000}
 .plan-urgent-b{background:#C77A1E}
+
+/* ===== Tính lại lịch theo công thức (plan-schedule.js) ===== */
+/* Modal "Các đầu việc bị ảnh hưởng" – nổi trên form đầu việc (drawer z-index 31), dưới toast (40) */
+.sched-scrim{position:fixed; inset:0; background:rgba(10,18,28,.5); z-index:35}
+.sched-modal{position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:min(1040px,calc(100% - 32px)); max-height:min(88vh,900px);
+  background:var(--surface); z-index:36; display:flex; flex-direction:column; border-radius:16px; overflow:hidden; box-shadow:0 24px 64px rgba(10,18,28,.35)}
+.sched-h{padding:18px 22px 12px; border-bottom:1px solid var(--line)}
+.sched-h h2{margin:0 0 6px}
+.sched-end{margin:8px 0 0; padding-left:18px; font-size:13px}
+.sched-b{padding:14px 22px; overflow:auto; flex:1}
+.sched-f{display:flex; justify-content:space-between; align-items:center; gap:10px; padding:12px 22px; border-top:1px solid var(--line)}
+.sched-sub{margin:18px 0 8px; font-size:14px}
+.sched-tbl{width:100%; font-size:13px}
+.sched-tbl td{vertical-align:top}
+.sched-tbl .sched-no{white-space:nowrap; color:var(--muted, var(--grey)); width:56px}
+.sched-tbl .sched-dv{font-weight:600; min-width:180px}
+.sched-tbl .sched-ov{white-space:nowrap}
+.sched-tbl tr.sched-self td{background:var(--teal-soft)}
+.sched-tbl tr.sched-grp td{background:var(--paper); font-weight:700; color:var(--teal-hover); font-size:12.5px}
+.sched-d{font-weight:700; white-space:nowrap}
+.sched-d.late{color:var(--bad)}
+.sched-d.early{color:var(--ok)}
+.sched-notes{margin:14px 0 0; padding-left:18px; font-size:12.5px; color:var(--warn)}
+/* Khung báo lệch lịch trong form đầu việc */
+.sched-drift{margin:0 0 14px; padding:10px 12px; border-radius:10px; background:var(--warn-soft); color:var(--ink); font-size:13px; line-height:1.5}
+/* Nháy sáng các dòng vừa đổi sau khi lưu (S.schedFlash, planTaskRow()) */
+@keyframes schedFlash{from{background:var(--warn-soft)} to{background:transparent}}
+.plan-grid tbody tr.plan-flash td{animation:schedFlash 3.2s ease-out}
+@media (prefers-reduced-motion: reduce){.plan-grid tbody tr.plan-flash td{animation:none; outline:2px solid var(--warn)}}
+.sched-list{margin:0 0 12px; padding-left:18px; font-size:12.5px; line-height:1.55}

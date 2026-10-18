@@ -216,32 +216,78 @@ function rpExportAssess(t){
   const diff = days(t.deadline, t.actEnd);
   return diff===0 ? "✓ Đúng hạn" : diff<0 ? `✓ Sớm ${Math.abs(diff)} ngày` : `⚠ Trễ ${diff} ngày`;
 }
+/* CHỈ 1 SHEET DUY NHẤT (không tách "Tổng quan"/"Đầu việc" như trước – theo yêu cầu người dùng "xuất chính
+   xác bảng như thế này, không tách sheet"): tiêu đề + dòng phụ + dải KPI đưa lên làm "pre" (vài dòng giá
+   trị thô phía TRÊN bảng, xem rpExportExcel() – cơ chế mới, dùng chung được cho sheet khác nếu cần), rồi
+   mới tới bảng "Đầu việc" đầy đủ, khớp ĐÚNG khối #rp-print hiện trên web (tiêu đề + dải KPI + planDetail()). */
+/* Tiêu đề cột 2 TẦNG khớp ĐÚNG cấu trúc bảng `planDetail()` trên web:
+   5 cột đơn (No./Đầu việc/Trạng thái/Ưu tiên/Phụ trách, gộp dọc 2 hàng) + 5 nhóm 2 cột con (Thời gian
+   (ngày)/4 cặp Kế hoạch, mỗi nhóm gộp ngang "Bắt đầu"/"Kết thúc") + 1 cột đơn (Đánh giá). `key` của từng
+   cột lá PHẢI khác nhãn hiển thị (nhãn "Bắt đầu"/"Kết thúc" lặp lại ở cả 4 nhóm Kế hoạch, dùng làm key sẽ
+   đụng nhau) – dùng thẳng tên trường `task` tương ứng làm key cho dễ đối chiếu. */
+const RP_PROJECT_HEAD2 = [
+  {key:"no", label:"No."}, {key:"dv", label:"Đầu việc"}, {key:"status", label:"Trạng thái"},
+  {key:"pr", label:"Ưu tiên"}, {key:"owner", label:"Phụ trách"},
+  {group:"Thời gian (ngày)", sub:[{key:"daysActual",label:"Theo thực tế"},{key:"daysProposed",label:"Theo đề xuất"}]},
+  {group:"Kế hoạch theo HĐ", sub:[{key:"hdStart",label:"Bắt đầu"},{key:"deadline",label:"Kết thúc"}]},
+  {group:"Kế hoạch HĐ điều chỉnh", sub:[{key:"adjStart",label:"Bắt đầu"},{key:"adjEnd",label:"Kết thúc"}]},
+  {group:"Kế hoạch dự kiến", sub:[{key:"expStart",label:"Bắt đầu"},{key:"expEnd",label:"Kết thúc"}]},
+  {group:"Kế hoạch thực tế", sub:[{key:"actStart",label:"Bắt đầu"},{key:"actEnd",label:"Kết thúc"}]},
+  {key:"assess", label:"Đánh giá"}
+];
+function rpProjectHeadFlat(){
+  const out = [];
+  for(const h of RP_PROJECT_HEAD2){ if(h.group) out.push(...h.sub); else out.push(h); }
+  return out;
+}
+/* Độ rộng cột ĐẶT TAY theo nội dung thật (không suy từ độ dài CHỮ TIÊU ĐỀ như mặc định chung của
+   `rpExportExcel()` – `c.header.length*1.3` – vì tiêu đề 2 tầng ở đây toàn nhãn ngắn "Bắt đầu"/"Kết thúc"
+   trong khi dữ liệu thật dài hơn nhiều, vd "TỔNG THỜI GIAN THỰC HIỆN DỰ ÁN" ở "Đầu việc" hay ngày
+   dd/mm/yyyy 10 ký tự ở các cột ngày – thiếu độ rộng làm Excel tự ngắt dòng giữa chuỗi ngày/cắt cụt tên
+   đầu việc như đã gặp). Tham khảo cách đặt độ rộng cột tường minh theo từng loại dữ liệu ở
+   `D:\Documents\Code Web\pm_ngsi_project\backend\app\modules\reports\xlsx.py` (`Writer.__init__`, dự án
+   PMIS khác – Python/openpyxl, không dùng chung code được, chỉ tham khảo Ý TƯỞNG đặt `width` tường minh
+   theo cột thay vì suy từ tiêu đề). */
+const RP_PROJECT_COL_WIDTH = {
+  no:8, dv:42, status:16, pr:12, owner:16,
+  daysActual:12, daysProposed:12,
+  hdStart:12, deadline:12, adjStart:12, adjEnd:12,
+  expStart:12, expEnd:12, actStart:12, actEnd:12,
+  assess:20
+};
 function rpBuildProjectExport(){
   const pr = rpBuildProject();
   if(pr.empty) return {title:"Báo cáo dự án", scope:"Chưa chọn dự án", period:"", filename:"Bao-cao-du-an", sheets:[{name:"Đầu việc", cols:[], rows:[]}]};
-  const colsSum = ["Chỉ số","Giá trị"], rowsSum = pr.stats.map(s=>({"Chỉ số":s.l, "Giá trị":String(s.v)}));
   const d = x => x?dmy(x):"";
-  const cols = ["No.","Đầu việc","Trạng thái","Ưu tiên","Phụ trách",
-    "Theo thực tế","Theo đề xuất",
-    "HĐ gốc - Bắt đầu","HĐ gốc - Kết thúc","HĐ điều chỉnh - Bắt đầu","HĐ điều chỉnh - Kết thúc",
-    "Dự kiến - Bắt đầu","Dự kiến - Kết thúc","Thực tế - Bắt đầu","Thực tế - Kết thúc","Đánh giá"];
+  const cols = rpProjectHeadFlat().map(c => ({header:c.label, key:c.key, width:RP_PROJECT_COL_WIDTH[c.key]}));
   const taskRows = pr.p._tasks || [];
   const rows = taskRows.map(t => ({
-    "No.":t.no||"", "Đầu việc":planShortName(t.dv), "Trạng thái":t.status||"", "Ưu tiên":t.pr||"", "Phụ trách":t.owner||"",
-    "Theo thực tế":t.daysActual??"", "Theo đề xuất":t.daysProposed??"",
-    "HĐ gốc - Bắt đầu":d(t.hdStart), "HĐ gốc - Kết thúc":d(t.deadline),
-    "HĐ điều chỉnh - Bắt đầu":d(t.adjStart), "HĐ điều chỉnh - Kết thúc":d(t.adjEnd),
-    "Dự kiến - Bắt đầu":d(t.expStart), "Dự kiến - Kết thúc":d(t.expEnd),
-    "Thực tế - Bắt đầu":d(t.actStart), "Thực tế - Kết thúc":d(t.actEnd),
-    "Đánh giá":rpExportAssess(t)
+    no:t.no||"", dv:planShortName(t.dv), status:t.status||"", pr:t.pr||"", owner:t.owner||"",
+    daysActual:t.daysActual??"", daysProposed:t.daysProposed??"",
+    hdStart:d(t.hdStart), deadline:d(t.deadline),
+    adjStart:d(t.adjStart), adjEnd:d(t.adjEnd),
+    expStart:d(t.expStart), expEnd:d(t.expEnd),
+    actStart:d(t.actStart), actEnd:d(t.actEnd),
+    assess:rpExportAssess(t)
   }));
   const title = `Báo cáo dự án – ${pr.p.name} – ${pr.P.label}`;
+  /* 2 dòng tiêu đề + 1 dòng trống + 2 dòng KPI (nhãn/giá trị, đúng thứ tự dải "stat" trên web) + 1 dòng
+     trống trước khi vào bảng – y hệt bố cục #rp-print (xem rpProjectContent()). */
+  const pre = [
+    [`BÁO CÁO DỰ ÁN – ${pr.p.name.toUpperCase()} – ${pr.P.label.toUpperCase()}`],
+    [`${pr.p.type}${pr.p.owner?" · TM: "+pr.p.owner:""} · ${rpRangeText(pr)} · lập ngày ${dmy(todayISO())}`],
+    [],
+    pr.stats.map(s=>s.l),
+    pr.stats.map(s=>String(s.v)),
+    []
+  ];
   return {
     title, scope:`${pr.p.name} (${pr.p.type})`,
     period:rpRangeText(pr), filename:slug(title),
     sheets:[
-      {name:"Tổng quan", cols:colsSum.map(h=>({header:h,key:h})), rows:rowsSum},
-      {name:"Đầu việc", cols:cols.map(h=>({header:h,key:h})), rows}
+      /* Màu tiêu đề navy #1F4E78/chữ trắng + viền đen – khớp đúng `.plan-grid-report` (tiêu đề bảng trên
+         web/PDF), khác màu xanh lá mặc định `RP_XL_HEAD_BG`/`RP_XL_BORDER` dùng cho các sheet khác. */
+      {name:"Đầu việc", cols, rows, pre, head2:RP_PROJECT_HEAD2, headBg:"FF1F4E78", headFg:"FFFFFFFF", borderColor:"FF000000"}
     ]
   };
 }
@@ -331,24 +377,63 @@ async function rpExportExcel(report){
   const wb = new ExcelJS.Workbook();
   wb.creator = "NGSI · Phòng Kỹ thuật"; wb.created = new Date();
   for(const sh of report.sheets){
-    const ws = wb.addWorksheet(sh.name.slice(0,31), {views:[{state:"frozen", ySplit:1}]});
+    /* `sh.pre` (tuỳ chọn) – vài dòng giá trị thô (mảng) đặt TRƯỚC bảng trong CÙNG 1 sheet, vd tiêu đề + dải
+       KPI của "Báo cáo dự án" (rpBuildProjectExport()) – không tách sheet riêng nữa theo yêu cầu người
+       dùng. `sh.head2` (tuỳ chọn, mới thêm) – tiêu đề cột 2 TẦNG kiểu nhóm (vd "Kế hoạch theo HĐ" chứa 2
+       cột con "Bắt đầu"/"Kết thúc"), khớp ĐÚNG cấu trúc tiêu đề của bảng `planDetail()` trên web (xem
+       `rpBuildProjectExport()`) – dạng `[{key,label} | {group,sub:[{key,label},...]}]` theo đúng thứ tự
+       cột. Khi có `pre`/`head2`, dòng tiêu đề cột KHÔNG còn cố định ở hàng 1 (ExcelJS tự ghi header vào
+       ĐÚNG hàng 1 nếu gán qua `ws.columns`, nên ở đây chỉ dùng `ws.columns` để set độ rộng/key, chữ tiêu
+       đề cột ghi tay vào đúng hàng sau khi đã có đủ `pre` rows). `sh.headBg`/`sh.headFg`/`sh.borderColor`
+       (tuỳ chọn) ghi đè màu nền/chữ tiêu đề + màu viền mặc định (xanh lá, kiểu `.rp-sec-grn`) – dùng cho
+       bảng "Đầu việc" ở Báo cáo dự án (navy `#1F4E78`/trắng, khớp `.plan-grid-report` trên web, viền đen). */
+    const preRows = sh.pre || [];
+    const hr0 = preRows.length + 1; // hàng đầu của khối tiêu đề cột
+    const headRows = sh.head2 ? 2 : 1;
+    const hr = hr0 + headRows - 1; // hàng CUỐI của khối tiêu đề cột (dữ liệu bắt đầu ngay sau)
+    const ws = wb.addWorksheet(sh.name.slice(0,31), {views:[{state:"frozen", ySplit:hr}]});
     if(!sh.cols.length) continue;
-    ws.columns = sh.cols.map(c => ({header:c.header, key:c.key, width: Math.min(42, Math.max(10, c.header.length*1.3))}));
+    /* `c.width` (tuỳ chọn) – đặt tay theo nội dung thật, dùng cho bảng "Đầu việc" (xem
+       `RP_PROJECT_COL_WIDTH`); không có thì rơi về suy từ độ dài CHỮ TIÊU ĐỀ như cũ (đủ dùng cho các sheet
+       tiêu đề 1 tầng, tên cột đã mô tả rõ nội dung, vd "Tên dự án"). */
+    ws.columns = sh.cols.map(c => ({key:c.key, width: c.width!=null ? c.width : Math.min(42, Math.max(10, c.header.length*1.3))}));
+    for(const r of preRows) ws.addRow(r);
+    const headBg = sh.headBg || RP_XL_HEAD_BG, headFg = sh.headFg || RP_XL_HEAD_FG, borderArgb = sh.borderColor || RP_XL_BORDER;
+    const headerCells = []; // gom hết các ô thuộc khối tiêu đề (1 hoặc 2 hàng) để tô màu/viền chung bên dưới
+    if(sh.head2){
+      let col = 1;
+      for(const h of sh.head2){
+        if(h.group){
+          ws.mergeCells(hr0, col, hr0, col + h.sub.length - 1);
+          ws.getCell(hr0, col).value = h.group;
+          headerCells.push(ws.getCell(hr0, col));
+          h.sub.forEach((s,i) => { const c = ws.getCell(hr0+1, col+i); c.value = s.label; headerCells.push(c); });
+          col += h.sub.length;
+        } else {
+          ws.mergeCells(hr0, col, hr0+1, col);
+          ws.getCell(hr0, col).value = h.label;
+          headerCells.push(ws.getCell(hr0, col));
+          col++;
+        }
+      }
+    } else {
+      const headerRow = ws.getRow(hr0);
+      sh.cols.forEach((c,i) => { const cell = headerRow.getCell(i+1); cell.value = c.header; headerCells.push(cell); });
+    }
     /* Tô màu/định dạng TỪNG Ô đầu cột (không dùng row.fill/row.font trên cả Row) – ExcelJS/Excel tô cả
        dòng tới hết XFD nếu set style ở cấp Row, khiến mảng màu lan ra quá các cột đang dùng (lỗi "thừa"
        đã gặp). Cũng bỏ hẳn autoFilter (mũi tên lọc) vì không cần cho một bản báo cáo xuất tĩnh. */
-    for(let i=1;i<=sh.cols.length;i++){
-      const cell = ws.getRow(1).getCell(i);
-      cell.font = {bold:true, color:{argb:RP_XL_HEAD_FG}};
-      cell.fill = {type:"pattern", pattern:"solid", fgColor:{argb:RP_XL_HEAD_BG}};
+    for(const cell of headerCells){
+      cell.font = {bold:true, color:{argb:headFg}};
+      cell.fill = {type:"pattern", pattern:"solid", fgColor:{argb:headBg}};
       cell.alignment = {vertical:"middle", horizontal:"center", wrapText:true};
     }
     for(const r of sh.rows) ws.addRow(r);
     /* Kẻ ô đủ 4 cạnh + bật Wrap Text cho mọi ô dữ liệu (đầu cột đã bật riêng ở trên), đúng kiểu lưới Excel
        giấy của phòng – không bật thì Excel chỉ hiện chữ tràn ra ngoài/ cắt mất khi đóng cột, không tự
        xuống dòng dù dòng đã cao sẵn do ô gộp bên cạnh. */
-    const thin = {style:"thin", color:{argb:RP_XL_BORDER}};
-    for(let ri=2; ri<=1+sh.rows.length; ri++){
+    const thin = {style:"thin", color:{argb:borderArgb}};
+    for(let ri=hr+1; ri<=hr+sh.rows.length; ri++){
       const row = ws.getRow(ri);
       for(let ci=1; ci<=sh.cols.length; ci++){
         const cell = row.getCell(ci);
@@ -356,7 +441,7 @@ async function rpExportExcel(report){
         cell.alignment = {vertical:"top", wrapText:true};
       }
     }
-    for(let ci=1; ci<=sh.cols.length; ci++) ws.getRow(1).getCell(ci).border = {top:thin, left:thin, bottom:thin, right:thin};
+    for(let ri=hr0; ri<=hr; ri++) for(let ci=1; ci<=sh.cols.length; ci++) ws.getRow(ri).getCell(ci).border = {top:thin, left:thin, bottom:thin, right:thin};
     /* Gộp ô (merge) các cột phân cấp (Người thực hiện/Dự án/Hạng mục…) giống hệt bảng xem trước trên màn
        hình (rowspan ở rpWeekRowsHtml/rpProjectHtml) – không lặp lại giá trị ở từng dòng con khi xuất. */
     if(sh.merges && sh.rawRows){
@@ -366,8 +451,8 @@ async function rpExportExcel(report){
         while(i<sh.rawRows.length){
           const span = rpSpan(sh.rawRows, i, m.keys);
           if(span>1){
-            ws.mergeCells(2+i, col, 1+i+span, col);
-            ws.getCell(2+i, col).alignment = {vertical:"top", wrapText:true};
+            ws.mergeCells(hr+1+i, col, hr+i+span, col);
+            ws.getCell(hr+1+i, col).alignment = {vertical:"top", wrapText:true};
           }
           i += span || 1;
         }
@@ -411,8 +496,23 @@ async function rpExportPdf(report){
     if(c){
       c.style.border = "none"; c.style.borderRadius = "0"; c.style.boxShadow = "none";
       c.querySelectorAll("th, thead, .plan-no, .plan-dv").forEach(n => { n.style.position = "static"; n.style.top = "auto"; n.style.left = "auto"; });
-      c.querySelectorAll(".plan-scroll").forEach(n => { n.style.maxHeight = "none"; n.style.overflow = "visible"; });
-      c.querySelectorAll(".plan-grid.tbl-wrap").forEach(n => { n.style.overflow = "visible"; });
+      /* `overflow:visible` chỉ NGỪNG CẮT HÌNH, không làm khung chứa (.plan-scroll/.plan-grid.tbl-wrap/
+         #rp-print) tự GIÃN RỘNG ra để chứa đúng chiều rộng thật của bảng – bảng "Đầu việc" (nhiều cột 4
+         cặp ngày) rộng hơn hẳn khung hiển thị (`.plan-scroll` phải cuộn ngang mới xem hết), nên dù đã
+         "visible" thì phần tràn ra vẫn nằm NGOÀI khung đo của #rp-print (html2canvas chỉ chụp đúng kích
+         thước `getBoundingClientRect()` của #rp-print tại thời điểm đo, không tự mở rộng theo nội dung
+         tràn) → bị cắt mất cột bên phải, hoặc cắt mất cột bên trái nếu bảng đang bị cuộn ngang dở (
+         `.plan-scroll.scrollLeft !== 0`) lúc bấm "Xuất PDF" – xác nhận bằng Playwright: đo trực tiếp canvas
+         chụp ra chỉ rộng đúng bằng `#rp-print` lúc CHƯA sửa (1184px) dù bảng thật rộng ~2050px. Sửa bằng
+         cách ép CẢ CHUỖI khung chứa (`.plan-scroll`→`.plan-grid.tbl-wrap`→`.panel-b`→chính `#rp-print`)
+         `width:max-content` (tự co giãn khít theo bề rộng thật của nội dung con, không còn bị khoá theo
+         bề rộng khung nhìn của panel) + `max-width:none`, VÀ reset `scrollLeft=0` trước khi đổi `overflow`
+         (phòng khi người dùng đang cuộn dở bảng lúc bấm xuất – không để lệch trái/phải ngẫu nhiên theo vị
+         trí cuộn hiện tại, luôn xuất từ cột đầu tiên). */
+      c.querySelectorAll(".plan-scroll").forEach(n => { n.scrollLeft = 0; n.style.maxHeight = "none"; n.style.overflow = "visible"; n.style.width = "max-content"; n.style.maxWidth = "none"; });
+      c.querySelectorAll(".plan-grid.tbl-wrap").forEach(n => { n.style.overflow = "visible"; n.style.width = "max-content"; n.style.maxWidth = "none"; });
+      c.querySelectorAll(".panel-b").forEach(n => { n.style.width = "max-content"; n.style.maxWidth = "none"; });
+      c.style.width = "max-content"; c.style.maxWidth = "none";
       c.querySelectorAll("[style*='zoom']").forEach(n => { n.style.zoom = "1"; });
       /* LỖI THẬT đã gây "Không tạo được file PDF" (xác nhận bằng Playwright, đọc console.error thật, KHÔNG
          đoán): html2canvas@1.4.1 có bộ phân tích CSS riêng, KHÔNG hiểu hàm màu hiện đại `color-mix()` –

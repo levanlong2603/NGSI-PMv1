@@ -12,7 +12,8 @@
     "start": "node --env-file=.env backend/server.js",
     "dev": "node --env-file=.env backend/server.js",
     "user": "node --env-file=.env backend/scripts/manage-user.js",
-    "migrate": "node --env-file=.env backend/scripts/migrate-sqlite-to-mariadb.js"
+    "migrate": "node --env-file=.env backend/scripts/migrate-sqlite-to-mariadb.js",
+    "test": "node --test tests/schedule.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

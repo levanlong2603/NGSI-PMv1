@@ -19,7 +19,7 @@ function makeServerDb(){
     if(r.status===401 && !url.endsWith("/api/login") && !url.endsWith("/api/me/password")){ showLogin("Phiên đăng nhập đã hết, vui lòng đăng nhập lại."); throw {code:"unauthenticated"}; }
     if(r.status===403) throw {code:"invalid_argument", message:(j&&j.error)||"Bạn không có quyền"};
     if(r.status===413) throw {code:"quota_exceeded"};
-    if(!r.ok) throw {code:"failed", message:(j&&j.error)||"Lỗi máy chủ"};
+    if(!r.ok) throw {code:"failed", status:r.status, data:j, message:(j&&j.error)||"Lỗi máy chủ"};
     return j;
   }
   const docRef = p => { const i = p.indexOf("/"); const coll = p.slice(0,i), id = p.slice(i+1);
