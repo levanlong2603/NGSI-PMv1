@@ -323,8 +323,13 @@ nút `+`/`✕` mỗi dòng (`ACTIONS["addcatrow"]`/`["delcatrow"]`) chèn/xoá n
 - Dữ liệu mới: thêm dòng vào `RULES` trong `backend/server.js`; client nghe bằng `ON_SESSION.push(db => db.collection("x").onSnapshot(snap => {...; schedule();}))`.
 - Form: dùng `openForm({title, values, fields, onSave, onDelete})` (kiểu field: text, password, number, date, textarea, select, seg, check, heading, badge (hiển thị tĩnh dạng `.pill`, không phải ô nhập – dùng `text`/`tone`, không đọc/ghi `vals`), images (dán/chọn ảnh, xem mục Góp ý ở "Quy ước bắt buộc"), search (gõ để lọc trong danh sách DÀI thay cho `select` phải cuộn tìm – `options` PHẲNG `[[giá trị,nhãn],…]`, không gom nhóm như `select`; vd "Đầu việc" ở Nhập theo tuần, `weekly-input.js`. Input hiện chữ + dropdown gợi ý tối đa 200 dòng, Enter chọn gợi ý đầu tiên, rời ô mà chưa bấm chọn thì tự trả lại đúng chữ của lựa chọn đang lưu – không để chữ gõ dở lọt vào `vals`. So khớp qua `searchNorm()` – **bỏ dấu + hạ chữ thường cả 2 vế** (không phải so nguyên văn có dấu), vừa cho gõ không cần đúng dấu vừa tránh kẹt gợi ý khi gõ tiếng Việt có dấu (một số bộ gõ hệ thống ghép dấu xong không bắn lại sự kiện `input`, nên có thêm lưới an toàn nghe `compositionend` để lọc lại đúng giá trị cuối). Code ở `openForm()`, `core/ui.js`, CSS `.search-field`/`.search-dd` ở `base.css`); tuỳ chọn half, required, hint, onChange, placeholder (riêng cho `search`).
 - Khai báo `<script src="js/modules/<ten>.js">` trong `index.html` trước `js/main.js`. CSS riêng: `frontend/css/<ten>.css`.
+- **"Báo cáo" ĐÃ ĐƯA VỀ LẠI tab ngang trong trang** (yêu cầu người dùng: "chuyển báo cáo về lựa chọn trong
+  trang báo cáo, không sổ nữa"): menu trái là 1 mục đơn "Báo cáo"; `viewReports()` (`reports.js`) vẽ tiêu đề
+  "Báo cáo" + `.rp-tabs` (Báo cáo tuần / Báo cáo dự án / Báo cáo tổng hợp dự án, `ACTIONS["rptab"]` đặt
+  `S.rp.tab`) – cùng kiểu tab với KPI & Năng lực. Hiện KHÔNG còn mục nào dùng `children`, nhưng cơ chế bên dưới
+  vẫn giữ nguyên trong `renderNav()` (core) – mô tả lịch sử để dùng lại nếu cần:
 - **Mục menu trái xổ ra mục con** (thay vì điều hướng thẳng tới 1 trang) – thêm `children:[{label, act(), active()}]`
-  vào đúng object đang `VIEWS.splice()` vào (xem "Báo cáo" làm mẫu, `reports.js`): mỗi mục con tự mang
+  vào đúng object đang `VIEWS.splice()` vào (từng dùng cho "Báo cáo", `reports.js` – nay đã bỏ): mỗi mục con tự mang
   `act()` (module tự set state/tab riêng của nó – vd `S.rp.tab`) + `active()` (trả `true/false` biết mục
   con nào đang chọn, để tô đậm) – `renderNav()` (`core/ui.js`) chỉ GỌI 2 hàm này, không biết gì về state
   riêng của module (đúng kiến trúc "không sửa lõi": cơ chế generic ở core, dữ liệu cụ thể ở module). Bấm

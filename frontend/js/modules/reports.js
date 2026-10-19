@@ -275,7 +275,7 @@ function rpBuildProjectExport(){
      trống trước khi vào bảng – y hệt bố cục #rp-print (xem rpProjectContent()). */
   const pre = [
     [`BÁO CÁO DỰ ÁN – ${pr.p.name.toUpperCase()} – ${pr.P.label.toUpperCase()}`],
-    [`${pr.p.type}${pr.p.owner?" · TM: "+pr.p.owner:""} · ${rpRangeText(pr)} · lập ngày ${dmy(todayISO())}`],
+    [`${pr.p.type}${pr.p.owner?" · "+pr.p.owner:""} · ${rpRangeText(pr)} · lập ngày ${dmy(todayISO())}`],
     [],
     pr.stats.map(s=>s.l),
     pr.stats.map(s=>String(s.v)),
@@ -858,7 +858,7 @@ function rpProjectContent(pr){
   h += `<section class="panel" id="rp-print"><div class="panel-b">
     <div style="text-align:center; margin-bottom:18px">
       <div style="font-size:18px; font-weight:800; letter-spacing:.01em">BÁO CÁO DỰ ÁN – ${esc(pr.p.name.toUpperCase())} – ${esc(pr.P.label.toUpperCase())}</div>
-      <div class="small muted" style="margin-top:4px">${esc(pr.p.type)}${pr.p.owner?" · TM: "+esc(pr.p.owner):""} · ${esc(rpRangeText(pr))} · lập ngày ${dmy(todayISO())}</div>
+      <div class="small muted" style="margin-top:4px">${esc(pr.p.type)}${pr.p.owner?" · "+esc(pr.p.owner):""} · ${esc(rpRangeText(pr))} · lập ngày ${dmy(todayISO())}</div>
     </div>
     <div class="band" style="margin-bottom:20px">${pr.stats.map(s=>`<div class="stat ${s.bad?"bad":""}"><div class="v">${esc(String(s.v))}</div><div class="l">${esc(s.l)}</div></div>`).join("")}</div>
     ${planDetail(pr.p, false, true)}
@@ -873,15 +873,16 @@ function viewReports(){
   if(S.rp.tab==="project"){ const pr = rpBuildProject(); toolbar = rpProjectToolbar(pr); content = rpProjectContent(pr); }
   else if(S.rp.tab==="overview"){ const ov = rpBuildOverview(); toolbar = rpOverviewToolbar(ov); content = rpOverviewContent(ov); }
   else { const report = rpBuildWeek(); toolbar = rpWeekToolbar(report); content = rpWeekContent(report); }
-  /* 3 "tab" trước đây nằm ngang ở đầu trang (rp-tabs) – đã chuyển thành 3 mục con xổ ra ở menu trái (xem
-     VIEWS.splice bên dưới, renderNav() ở core/ui.js), theo yêu cầu người dùng kiểu menu "xổ xuống" thay vì
-     tab ngang. Tiêu đề trang đổi theo đúng mục con đang chọn để biết đang xem báo cáo nào (trước đây luôn
-     cố định "Báo cáo" chung chung). */
-  const RP_TAB_LABEL = {week:"Báo cáo tuần", project:"Báo cáo dự án", overview:"Báo cáo tổng hợp dự án"};
-  let h = `<div class="head"><div><h1>${esc(RP_TAB_LABEL[S.rp.tab]||"Báo cáo")}</h1></div><div class="head-ctl">${toolbar}</div></div>`;
+  /* 3 loại báo cáo chọn bằng tab ngang ngay dưới tiêu đề (cùng kiểu `.rp-tabs` với trang KPI & Năng lực) –
+     từng chuyển sang 3 mục con xổ ra ở menu trái một thời gian, nay ĐƯA VỀ LẠI tab theo yêu cầu người dùng
+     ("chuyển báo cáo về lựa chọn trong trang báo cáo, không sổ nữa"); "Báo cáo" ở menu trái là 1 mục đơn. */
+  const tabs = [["week","Báo cáo tuần"],["project","Báo cáo dự án"],["overview","Báo cáo tổng hợp dự án"]];
+  let h = `<div class="head"><div><h1>Báo cáo</h1></div><div class="head-ctl">${toolbar}</div></div>`;
+  h += `<div class="rp-tabs" role="tablist">${tabs.map(([k,l])=>`<button type="button" role="tab" data-act="rptab" data-t="${k}" aria-selected="${S.rp.tab===k}">${l}</button>`).join("")}</div>`;
   h += content;
   return h;
 }
+ACTIONS["rptab"] = el => { S.rp.tab = el.dataset.t; S.rp.exportOpen = false; render(); document.getElementById("main").scrollTop = 0; };
 ACTIONS["rppjkind"] = el => { S.rp.pjKind = el.dataset.k; render(); };
 ACTIONS["rppjnav"] = el => { S.rp.pjAnchor = shiftAnchor(S.rp.pjAnchor||S.week, S.rp.pjKind||"week", +el.dataset.d); render(); };
 ACTIONS["rpwkview"] = el => { S.rp.wkView = el.dataset.v; render(); };
@@ -928,21 +929,9 @@ document.addEventListener("click", e => {
 });
 VIEW_RENDER.reports = viewReports;
 ICONS.reports = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/><path d="m15 15 2 2 3-4" stroke="var(--teal)"/></svg>';
-/* "Báo cáo" đổi từ 1 mục đơn (trang riêng có 3 tab ngang .rp-tabs) sang 1 nhóm menu TRÁI xổ ra 3 mục con
-   (renderNav(), core/ui.js – cơ chế `children` mới, generic, không riêng cho reports.js) theo yêu cầu
-   người dùng ("chuyển 3 mục này sang dạng sổ xuống", tham khảo kiểu menu trái có mũi tên xổ mục con thụt lề
-   của 1 app khác). Mỗi mục con tự mang `act()` (đặt S.rp.tab đúng tab, tắt export đang mở) + `active()`
-   (biết mục nào đang được chọn để tô đậm) – core/ui.js chỉ gọi 2 hàm này, không biết gì về S.rp. */
+/* "Báo cáo" là 1 mục đơn ngay sau "Dự án" ở menu trái; chọn loại báo cáo bằng tab trong trang (viewReports()).
+   Cơ chế mục menu xổ mục con (`children`, renderNav() ở core/ui.js) vẫn giữ trong core cho module khác dùng. */
 {
   const i = VIEWS.findIndex(v=>v.id==="dash");
-  const rpChild = (tab, label) => ({
-    label,
-    act: () => { (S.rp = S.rp||{}).tab = tab; S.rp.exportOpen = false; },
-    active: () => S.view==="reports" && S.rp && S.rp.tab===tab,
-  });
-  VIEWS.splice(i+1, 0, {id:"reports", label:"Báo cáo", icon:"reports", children:[
-    rpChild("week", "Báo cáo tuần"),
-    rpChild("project", "Báo cáo dự án"),
-    rpChild("overview", "Báo cáo tổng hợp dự án"),
-  ]});
+  VIEWS.splice(i+1, 0, {id:"reports", label:"Báo cáo", icon:"reports"});
 }
