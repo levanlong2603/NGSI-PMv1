@@ -491,6 +491,16 @@ nút `+`/`✕` mỗi dòng (`ACTIONS["addcatrow"]`/`["delcatrow"]`) chèn/xoá n
   `S.planUrgentOpen`/`S.planPayOpen` theo `p.id` nên nút đặt ở ĐÂU bấm cũng ra đúng panel, không cần đồng bộ
   gì thêm. Lời gọi `planDetail(p, true)` ở `planContent()` (tab "Kế hoạch dự án") không đổi – `noTools`
   chỉ có tác dụng khi `extra` falsy (nhánh "Xoá dự án"/"Sửa thông tin" của `extra=true` không liên quan).
+  **CẬP NHẬT – 3 nút đổi thành 1 Ô CHỌN 4 lựa chọn loại trừ nhau** (`<select data-act="rppjview">`,
+  `rpProjectContent()`; xử lý ở listener `change` của `reports.js`): "Các mốc chính" (MẶC ĐỊNH = bảng đầu việc
+  đầy đủ hiện tại – người dùng chọn giữ đúng bảng này, KHÔNG phải bảng mốc chính lọc theo quy tắc) / "Tiến độ
+  theo tuần" / "Đầu việc khẩn cấp" / "Mốc thanh toán". Ghi vào đúng 3 state cũ (bật đúng 1, hoặc tắt cả 3) nên
+  `planDetail()` đọc như trước. Nút −/%/+ (`S.planZoom`) nay áp dụng cho CẢ 3 panel (bọc nội dung panel trong
+  khối `zoom` – `zoomWrap()` trong `planDetail()`), không chỉ bảng chính.
+  **Nút ‹ › cuộn ngang** cạnh nút zoom (`ACTIONS["planpan"]`, `plan.js`, có ở cả trang Dự án lẫn Báo cáo dự án)
+  – khỏi phải kéo xuống cuối bảng tìm thanh cuộn ngang: tự tìm trong cùng `.pdetail` phần tử đang cuộn ngang
+  được (rộng nhất – `.plan-scroll` của bảng chính hoặc `.plan-gantt-scroll` của Tiến độ theo tuần), trượt
+  ~3/4 bề rộng nhìn thấy, cuộn mượt, KHÔNG `render()` lại (giữ vị trí cuộn).
   **Bảng chính ẨN HẲN khi đang mở 1 trong 3 panel** (`anyPanelOpen = !extra && (ganttOpen||urgentOpen||
   payOpen)`, `planDetail()`) – trước đó bảng chính + panel đang mở XẾP CHỒNG cùng lúc, chú thích màu Gantt
   (`.plan-gantt-legend`) đứng sát ngay trên bảng chính nhìn như 1 khối, dễ hiểu lầm chú thích mô tả bảng
@@ -689,6 +699,21 @@ nút `+`/`✕` mỗi dòng (`ACTIONS["addcatrow"]`/`["delcatrow"]`) chèn/xoá n
   dung bảng và thanh cuộn. Mọi selector dựa vào "ancestor cuộn gần nhất" (`.plan-grid thead{position:
   sticky}`, `.plan-no`/`.plan-dv{position:sticky; left:...}`) vẫn khớp đúng vì chỉ đổi *ancestor* cuộn từ
   `.tbl-wrap` sang `.plan-scroll`, không đổi cơ chế sticky.
+  **CẬP NHẬT – đảo thứ tự lồng để thanh cuộn nằm HẲN NGOÀI viền bo** (yêu cầu người dùng): giờ là
+  `.plan-scroll` (vùng cuộn, không viền, padding phải/dưới 3px – người dùng muốn thanh cuộn sát viền bảng,
+  từng để 8px thấy quá xa; góc bảng VUÔNG `border-radius:0` theo yêu cầu người dùng, không còn bo 12px) bọc NGOÀI → `.tbl-wrap.panel.plan-grid` (viền +
+  bo góc + shadow, `width:max-content; min-width:100%`) bọc sát bảng ở BÊN TRONG. Khung trong dùng
+  `overflow:clip` – BẮT BUỘC, không dùng `hidden`/`auto`: `hidden` biến nó thành vùng cuộn nên `position:sticky`
+  của thead/2 cột đầu sẽ dính theo khung (không cuộn) thay vì theo `.plan-scroll` → hỏng khoá khung (đã kiểm
+  bằng Playwright: thead và `td.plan-no` dính đúng mép 0px khi cuộn 2 chiều). Hệ quả có chủ đích: viền phải/
+  dưới của bảng chỉ thấy khi cuộn tới cuối (như mép bảng Excel). Selector CSS đổi từ `.plan-grid .plan-scroll`
+  sang `.plan-scroll` / `.plan-scroll > .plan-grid.tbl-wrap`; `onclone` của Xuất PDF vẫn đúng (ép cả 2 phần tử
+  về `max-content`, không phụ thuộc thứ tự lồng – đã thử xuất PDF lại).
+  **Bỏ bề rộng tối thiểu ép cứng của bảng** (`min-width:2050/2200px` cả inline ở `planDetail()` lẫn
+  `.plan-grid table` ở `plan.css`): phần dư bị dồn hết vào cột cuối (Note) làm cột này rộng quá mức (phản hồi
+  người dùng). Giờ bảng tự rộng theo nội dung (`white-space:nowrap`), cột Note cố định `width:260px` (với bảng
+  auto-layout, `width` trên ô giới hạn luôn max-content của cột nên ghi chú dài tự xuống dòng). Đo lại bằng
+  Playwright: các cột khác giữ nguyên bề rộng cũ (ngày 123px/cột, Đầu việc 220px…).
 - **`planDetail(p, extra)`** (`plan.js`) *(mô tả cả nhánh `extra` falsy – nay không còn nơi gọi, xem ghi
   chú cập nhật vị trí ở trên)* – cùng 1 bảng đầu việc dùng chung ở 2 đường vào khác nhau, nay
   khác nhau về CỘT CUỐI BẢNG: `extra=true` (chỉ gọi từ tab "Kế hoạch dự án", `planContent()`) **THAY** cột

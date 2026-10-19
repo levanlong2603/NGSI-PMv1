@@ -828,10 +828,12 @@ function rpProjectContent(pr){
   const ganttOpen = !pr.empty && !!(S.planGanttOpen && S.planGanttOpen[pr.p.id]);
   const urgentOpen = !pr.empty && !!(S.planUrgentOpen && S.planUrgentOpen[pr.p.id]);
   const payOpen = !pr.empty && !!(S.planPayOpen && S.planPayOpen[pr.p.id]);
-  const toolBtns = pr.empty ? "" : `
-    <button class="btn${ganttOpen?" primary":""}" data-act="plangantt" data-id="${esc(pr.p.id)}" aria-pressed="${ganttOpen}">Tiến độ theo tuần</button>
-    <button class="btn${urgentOpen?" primary":""}" data-act="planurgent" data-id="${esc(pr.p.id)}" aria-pressed="${urgentOpen}">Đầu việc khẩn cấp</button>
-    <button class="btn${payOpen?" primary":""}" data-act="planpay" data-id="${esc(pr.p.id)}" aria-pressed="${payOpen}">Mốc thanh toán</button>`;
+  /* CẬP NHẬT: 3 nút bật/tắt đổi thành 1 ô chọn 4 lựa chọn LOẠI TRỪ NHAU (yêu cầu người dùng), mặc định "Các
+     mốc chính" = bảng đầu việc đầy đủ (người dùng chọn giữ đúng bảng này). Vẫn ghi vào đúng 3 state cũ (bật
+     đúng 1 cái, hoặc tắt cả 3) nên planDetail() không cần đổi cách đọc. */
+  const view = ganttOpen ? "gantt" : urgentOpen ? "urgent" : payOpen ? "pay" : "main";
+  const toolBtns = pr.empty ? "" : `<select class="inp" data-act="rppjview" data-id="${esc(pr.p.id)}" style="flex:none; width:auto; min-width:190px" aria-label="Nội dung báo cáo">
+    ${[["main","Các mốc chính"],["gantt","Tiến độ theo tuần"],["urgent","Đầu việc khẩn cấp"],["pay","Mốc thanh toán"]].map(([k,l])=>`<option value="${k}" ${view===k?"selected":""}>${l}</option>`).join("")}</select>`;
   let h = `<section class="panel" style="margin-bottom:14px; overflow:visible"><div class="panel-b" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap">
     <div style="display:flex; align-items:center; gap:14px; flex:1; min-width:0; overflow-x:auto; padding:2px">
       <select class="inp" data-act="rppjptype" style="flex:none; width:auto; min-width:150px">${PLAN_FILTERS.map(pf=>`<option value="${esc(pf.key)}" ${pf.key===S.rp.pjPtype?"selected":""}>${esc(pf.label)}</option>`).join("")}</select>
@@ -919,6 +921,12 @@ main.addEventListener("change", e => {
     if(cur && !planMatchFilter(cur, S.rp.pjPtype)) S.rp.pjProject = "";
   }
   else if(a==="rpovptype") S.rp.ovPtype = el.value;
+  else if(a==="rppjview"){
+    const id = el.dataset.id, v = el.value;
+    (S.planGanttOpen = S.planGanttOpen||{})[id] = v==="gantt";
+    (S.planUrgentOpen = S.planUrgentOpen||{})[id] = v==="urgent";
+    (S.planPayOpen = S.planPayOpen||{})[id] = v==="pay";
+  }
   else return;
   render();
 });

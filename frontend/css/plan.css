@@ -16,9 +16,16 @@
    bottom NGAY TRÊN `.plan-scroll` thì nó mới tự chừa chỗ trống giữa nội dung (bảng) và chính thanh cuộn
    của nó trước khi chạm viền; khung ngoài chỉ còn lo viền/bo góc/shadow (`overflow:hidden` để bo tròn góc
    vùng con bên trong), không có padding riêng. */
-.plan-grid.tbl-wrap{border:1px solid var(--line); border-radius:12px; overflow:hidden; box-shadow:0 2px 10px rgba(10,18,28,.06)}
-.plan-grid .plan-scroll{overflow:auto; max-height:72vh; padding:0 8px 8px 0}
-.plan-grid table{min-width:2050px}
+/* CẬP NHẬT: thanh cuộn nằm HẲN NGOÀI viền bo của bảng (yêu cầu người dùng) – đảo thứ tự lồng: `.plan-scroll`
+   (vùng cuộn, không viền) bọc NGOÀI, khung viền/bo góc `.plan-grid.tbl-wrap` bọc sát quanh bảng ở BÊN TRONG
+   (rộng theo bảng, viền phải/dưới chỉ thấy khi cuộn tới cuối – như mép bảng Excel). Khung dùng
+   `overflow:clip` (KHÔNG phải hidden/auto): vẫn cắt bo góc nhưng không biến thành vùng cuộn, nên tiêu đề và 2
+   cột đầu (position:sticky) vẫn dính theo `.plan-scroll`. Padding phải/dưới của `.plan-scroll` chừa khoảng
+   trống giữa viền bảng và thanh cuộn. */
+.plan-scroll{overflow:auto; max-height:72vh; padding:0 3px 3px 0}
+.plan-scroll > .plan-grid.tbl-wrap{width:max-content; min-width:100%; overflow:clip; border:1px solid var(--line); border-radius:0; box-shadow:0 2px 10px rgba(10,18,28,.06)}
+/* Không ép bề rộng tối thiểu cứng cho bảng nữa (từng là 2050/2200px): phần dư bị dồn hết vào cột cuối
+   (Note) làm cột này rộng quá mức. Bảng tự rộng theo nội dung (white-space:nowrap), cột Note cố định 260px. */
 /* border-right riêng cho ô tiêu đề dùng đúng tông xanh lá viền (#B9D6A0, cùng tông border-bottom) thay vì
    var(--line-2) xám chung của th/td thường – nền xanh lá nhạt (#D7E8C7) kẻ bằng màu xám lộ rõ thành 1 vệt
    sáng cắt ngang, đổi sang cùng tông mới hoà vào nền, đỡ bị "lộ" viền phân cách (theo phản hồi người dùng). */

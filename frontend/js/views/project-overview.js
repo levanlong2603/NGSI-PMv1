@@ -115,6 +115,15 @@ ACTIONS["ovsort"] = el => {
 };
 ACTIONS["ovmenu"] = el => { S.ovMenuOpen = S.ovMenuOpen===el.dataset.id ? null : el.dataset.id; render(); };
 ACTIONS["ovedit"] = el => { S.ovMenuOpen = null; const p = M.pById.get(el.dataset.id); if(p) projectForm(p); };
+/* Mở thẳng Báo cáo → tab "Báo cáo dự án" với đúng dự án này (module Báo cáo – reports.js – nạp sau, nên chỉ
+   hiện mục menu khi module có mặt). Bỏ lọc Loại ("Tất cả") để dự án chắc chắn có trong ô chọn dự án. */
+ACTIONS["ovreport"] = el => {
+  S.ovMenuOpen = null;
+  rpInit();
+  Object.assign(S.rp, {tab:"project", pjProject:el.dataset.id, pjPtype:"Tất cả", exportOpen:false});
+  S.view = "reports"; store("view", "reports");
+  render(); document.getElementById("main").scrollTop = 0;
+};
 /* Bấm ra ngoài menu ⋮ thì tự đóng – cùng cách làm với .rp-export (nút "Xuất báo cáo", reports.js) */
 document.addEventListener("click", e => {
   if(S.ovMenuOpen && !e.target.closest(".ov-menu")){ S.ovMenuOpen = null; render(); }
@@ -155,6 +164,7 @@ function ovTable(P, q){
         <button class="btn icon" type="button" data-act="ovmenu" data-id="${esc(p.id)}" aria-haspopup="true" aria-expanded="${menuOpen}" title="Thao tác">⋮</button>
         ${menuOpen ? `<div class="tb-dropdown tb-dropdown-r" style="min-width:170px">
           <button class="tb-item" type="button" data-act="goplan" data-id="${esc(p.id)}">Xem chi tiết</button>
+          ${typeof rpInit==="function"?`<button class="tb-item" type="button" data-act="ovreport" data-id="${esc(p.id)}">Báo cáo dự án</button>`:""}
           ${canManageProject(p)?`<button class="tb-item" type="button" data-act="ovedit" data-id="${esc(p.id)}">Sửa thông tin</button>`:""}
         </div>` : ""}
       </td>

@@ -71,6 +71,15 @@ const PLAN_COLS = 16;
 /* Mức phóng bảng "Kế hoạch dự án" (zoom CSS trên <table>, xem plan.css) – chỉ lưu trong phiên, không ghi
    CSDL, giống các tuỳ chọn hiển thị khác (S.planTog…). */
 function planZoomLevel(){ return S.planZoom || 1; }
+/* Nút ‹ › cuộn ngang bảng đang hiện (bảng đầu việc chính hoặc bảng trong panel như Tiến độ theo tuần) mà
+   không phải kéo xuống cuối bảng tìm thanh cuộn ngang. Tìm trong cùng khối .pdetail phần tử đang cuộn ngang
+   được (rộng nhất), trượt ~3/4 bề rộng nhìn thấy. Không render() lại (giữ nguyên vị trí cuộn). */
+ACTIONS["planpan"] = el => {
+  const box = el.closest(".pdetail"); if(!box) return;
+  const sc = [...box.querySelectorAll("*")].filter(n => n.scrollWidth > n.clientWidth + 1 && /auto|scroll/.test(getComputedStyle(n).overflowX))
+    .sort((a, b) => b.scrollWidth - a.scrollWidth)[0];
+  if(sc) sc.scrollBy({left: +el.dataset.d * Math.round(sc.clientWidth * 0.75), behavior:"smooth"});
+};
 ACTIONS["planzoom"] = el => {
   const d = +el.dataset.d;
   if(d===0) S.planZoom = 1;
@@ -167,26 +176,35 @@ function planDetail(p, extra, noTools){
         : (noTools ? "" : `<button class="btn${ganttOpen?" primary":""}" data-act="plangantt" data-id="${esc(p.id)}" aria-pressed="${ganttOpen}">Tiến độ theo tuần</button>
         <button class="btn${urgentOpen?" primary":""}" data-act="planurgent" data-id="${esc(p.id)}" aria-pressed="${urgentOpen}">Đầu việc khẩn cấp</button>
         <button class="btn${payOpen?" primary":""}" data-act="planpay" data-id="${esc(p.id)}" aria-pressed="${payOpen}">Mốc thanh toán</button>`)}</div>
+      <div style="display:flex; gap:8px; flex:none">
+      <div class="plan-zoom" role="group" aria-label="Cuộn ngang bảng">
+        <button data-act="planpan" data-d="-1" title="Cuộn sang trái" aria-label="Cuộn sang trái">‹</button>
+        <button data-act="planpan" data-d="1" title="Cuộn sang phải" aria-label="Cuộn sang phải">›</button>
+      </div>
       <div class="plan-zoom" role="group" aria-label="Phóng to/thu nhỏ bảng">
         <button data-act="planzoom" data-d="-0.1" title="Thu nhỏ" aria-label="Thu nhỏ">−</button>
         <span class="lv">${Math.round(planZoomLevel()*100)}%</span>
         <button data-act="planzoom" data-d="0.1" title="Phóng to" aria-label="Phóng to">+</button>
-      </div></div>`;
+      </div></div></div>`;
   /* Đang mở 1 trong 3 panel (chỉ áp dụng khi !extra, tức trang Báo cáo dự án) → ẨN HẲN bảng đầu việc chính
      bên dưới thay vì xếp chồng cả 2 – theo yêu cầu người dùng ("nó là riêng mà", chú thích màu Gantt đứng
      ngay sát bảng chính nhìn như 1 bảng dễ gây hiểu lầm chú thích đó mô tả luôn bảng chính). Đóng cả 3
      panel thì bảng chính hiện lại bình thường. Tab "Kế hoạch dự án" (`extra=true`) không có khái niệm 3
      panel này nên luôn hiện bảng chính, không bị ảnh hưởng. */
   const anyPanelOpen = !extra && (ganttOpen || urgentOpen || payOpen);
-  if(!extra && ganttOpen) out += `<section class="panel" style="margin-bottom:12px"><div class="panel-b"><h2 style="margin:0 0 10px">Tiến độ theo tuần</h2>${planGanttPanel(p)}</div></section>`;
-  if(!extra && urgentOpen) out += `<section class="panel" style="margin-bottom:12px"><div class="panel-b"><h2 style="margin:0 0 10px">Đầu việc khẩn cấp / cần chú ý</h2>${planUrgentPanel(p)}</div></section>`;
-  if(!extra && payOpen) out += `<section class="panel" style="margin-bottom:12px"><div class="panel-b"><h2 style="margin:0 0 10px">Mốc thanh toán</h2>${planPaymentPanel(p)}</div></section>`;
+  /* Nút −/%/+ phóng to/thu nhỏ áp dụng cho CẢ 3 bảng này (yêu cầu người dùng: mọi trang hiển thị đều zoom
+     được), không chỉ bảng đầu việc chính – bọc nội dung panel trong 1 khối có cùng `zoom` (Xuất PDF tự ép
+     về zoom:1 ở onclone, xem rpExportPdf()). */
+  const zoomWrap = html => `<div style="zoom:${planZoomLevel()}">${html}</div>`;
+  if(!extra && ganttOpen) out += `<section class="panel" style="margin-bottom:12px"><div class="panel-b"><h2 style="margin:0 0 10px">Tiến độ theo tuần</h2>${zoomWrap(planGanttPanel(p))}</div></section>`;
+  if(!extra && urgentOpen) out += `<section class="panel" style="margin-bottom:12px"><div class="panel-b"><h2 style="margin:0 0 10px">Đầu việc khẩn cấp / cần chú ý</h2>${zoomWrap(planUrgentPanel(p))}</div></section>`;
+  if(!extra && payOpen) out += `<section class="panel" style="margin-bottom:12px"><div class="panel-b"><h2 style="margin:0 0 10px">Mốc thanh toán</h2>${zoomWrap(planPaymentPanel(p))}</div></section>`;
   if(!anyPanelOpen){
     const rows = planTreeRows(p, {cols, extra});
-    out += `<div class="tbl-wrap panel plan-grid${extra?"":" plan-grid-report"}"><div class="plan-scroll"><table style="min-width:${2050+(extra?150:0)}px; white-space:nowrap; zoom:${planZoomLevel()}"><thead>
+    out += `<div class="plan-scroll"><div class="tbl-wrap panel plan-grid${extra?"":" plan-grid-report"}"><table style="white-space:nowrap; zoom:${planZoomLevel()}"><thead>
     <tr><th rowspan="2" class="plan-no">No.</th><th rowspan="2" class="plan-dv" style="white-space:normal">Đầu việc</th><th rowspan="2">Trạng thái</th><th rowspan="2">Ưu tiên</th><th rowspan="2">Phụ trách</th>
       <th colspan="2">Thời gian (ngày)</th><th colspan="2">Kế hoạch theo HĐ</th><th colspan="2">Kế hoạch HĐ điều chỉnh</th><th colspan="2">Kế hoạch dự kiến</th><th colspan="2">Kế hoạch thực tế</th>
-      ${extra?`<th rowspan="2" style="width:180px; white-space:normal">Cảnh báo</th><th rowspan="2" style="white-space:normal">Note</th>`:`<th rowspan="2">Đánh giá</th>`}</tr>
+      ${extra?`<th rowspan="2" style="width:180px; white-space:normal">Cảnh báo</th><th rowspan="2" style="width:260px; white-space:normal">Note</th>`:`<th rowspan="2">Đánh giá</th>`}</tr>
     <tr><th>Theo thực tế</th><th>Theo đề xuất</th><th>Bắt đầu</th><th>Kết thúc</th><th>Bắt đầu</th><th>Kết thúc</th><th>Bắt đầu</th><th>Kết thúc</th><th>Bắt đầu</th><th>Kết thúc</th></tr>
     </thead>
     <tbody>${rows||`<tr><td colspan="${cols}"><div class="empty"><b>Dự án chưa có đầu việc.</b>${canManageProject(p)?`<button class="btn primary" style="margin-top:10px" data-act="addtask" data-id="${esc(p.id)}">+ Đầu việc</button>`:""}</div></td></tr>`}</tbody></table></div></div>
