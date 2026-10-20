@@ -139,6 +139,12 @@ function setTheme(t){
   store("theme", t); renderHeader();
 }
 document.getElementById("tbBellMenu").addEventListener("click", e => {
+  const be = e.target.closest("[data-tbgo-event]");
+  if(be){ // mở tab "Lịch" của Việc trong tuần, đúng tuần của sự kiện (modules/calendar.js)
+    const ev = (S.events||[]).find(x=>x.id===be.dataset.tbgoEvent);
+    tbCloseAll(); S.view = "input"; S.weekTab = "calendar"; if(ev) S.week = mondayOf(ev.start.slice(0,10)); store("view", S.view); render();
+    return;
+  }
   const bi = e.target.closest("[data-tbgo-issue]");
   if(bi){
     const [id, person] = bi.dataset.tbgoIssue.split("|");
@@ -147,13 +153,13 @@ document.getElementById("tbBellMenu").addEventListener("click", e => {
        tìm. Đổi cả "Tôi là" sang đúng người đó (giống cách trưởng phòng/phó phòng vẫn làm khi sửa dữ liệu
        tuần người khác) để entryForm() mở được. */
     const w = mondayOf(todayISO());
-    tbCloseAll(); S.view = "input"; S.week = w; S.me = person; store("view", S.view); store("me", S.me); render();
+    tbCloseAll(); S.view = "input"; S.weekTab = "tasks"; S.week = w; S.me = person; store("view", S.view); store("me", S.me); render();
     const doc = weekDoc(w, person); const en = doc && (doc.entries||[]).find(x=>x.id===id);
     if(en) entryForm(en, person);
     return;
   }
   const b = e.target.closest("[data-tbgo]"); if(!b) return;
-  tbCloseAll(); S.view = b.dataset.tbgo; store("view", S.view); render();
+  tbCloseAll(); S.view = b.dataset.tbgo; if(S.view==="input") S.weekTab = "tasks"; store("view", S.view); render();
 });
 document.addEventListener("click", () => tbCloseAll());
 document.addEventListener("keydown", e => { if(e.key==="Escape") tbCloseAll(); });
@@ -183,12 +189,22 @@ function renderHeader(){
     <button class="tb-item" data-uact="out">Đăng xuất</button>` : "";
   /* Chuông thông báo: CHỈ còn đúng 1 nội dung – vướng mắc nhập trong "Nhập theo tuần" của tuần hiện tại
      (weekIssues() ở model.js, nguồn trực tiếp từ lượt nhập tuần, không lấy theo dữ liệu đã tổng hợp ở
-     Kế hoạch dự án/Tổng quan dự án). Đã bỏ hẳn các mục cũ (đầu việc quá hạn, góp ý chưa xem). */
+     Kế hoạch dự án/Tổng quan dự án). Đã bỏ hẳn các mục cũ (đầu việc quá hạn, góp ý chưa xem).
+     + Sự kiện lịch sắp bắt đầu trong 30 phút (calUpcoming() ở modules/calendar.js – nạp sau nên kiểm tra tồn tại),
+     đồng bộ từ ptkt-appv1 cùng tab "Lịch" của Việc trong tuần. */
   const issues = (S.loaded && M) ? weekIssues() : [];
-  const bellN = document.getElementById("tbBellN");
-  bellN.hidden = !issues.length; bellN.textContent = issues.length>99?"99+":issues.length;
+  const ups = (S.loaded && typeof calUpcoming==="function") ? calUpcoming() : [];
+  const bellN = document.getElementById("tbBellN"), total = issues.length + ups.length;
+  bellN.hidden = !total; bellN.textContent = total>99?"99+":total;
   const TB_BELL_MAX = 8;
   const rows = [];
+  if(ups.length){
+    rows.push(`<div class="tb-head">Sự kiện sắp diễn ra</div>`);
+    for(const x of ups) rows.push(`<button class="tb-item" type="button" data-tbgo-event="${esc(x.e.id)}">
+      <b><span class="pill info" style="margin-right:5px">${esc(calLeftText(x.inMin))}</span>${esc(x.e.title)}</b>
+      <span class="muted">${esc(x.e.start.slice(11))}–${esc(x.e.end.slice(11))}${x.e.place?" · "+esc(x.e.place):""}${x.e.person===""?" · Cả phòng":""}</span></button>`);
+    if(issues.length) rows.push(`<div class="tb-head">Vướng mắc trong tuần</div>`);
+  }
   for(const e of issues.slice(0, TB_BELL_MAX)){
     const t = e.ref.t, p = e.ref.p;
     rows.push(`<button class="tb-item" type="button" data-tbgo-issue="${esc(e.id)}|${esc(e.person)}">
@@ -196,7 +212,7 @@ function renderHeader(){
       <span class="muted">${esc(p.name)}${e.nn?" · "+esc(e.nn):""} · ${esc(e.person)}</span></button>`);
   }
   if(issues.length>TB_BELL_MAX) rows.push(`<button class="tb-item" type="button" data-tbgo="input"><b>Xem tất cả ${issues.length} vướng mắc →</b></button>`);
-  document.getElementById("tbBellMenu").innerHTML = rows.length ? rows.join("") : `<div class="tb-empty">Không có vướng mắc nào trong tuần</div>`;
+  document.getElementById("tbBellMenu").innerHTML = rows.length ? rows.join("") : `<div class="tb-empty">Không có thông báo nào</div>`;
 }
 
 function render(){
@@ -325,6 +341,7 @@ function openForm(cfg){
     const dis = f.disabled ? "disabled" : "";
     if(f.type==="text"||f.type==="number"||f.type==="password") ctl = `<input class="inp" id="${id}" type="${f.type==="number"?"number":f.type==="password"?"password":"text"}" ${f.type==="password"?'autocomplete="new-password"':""} ${f.type==="number"&&f.min!=null?`min="${f.min}"`:""} ${f.type==="number"&&f.max!=null?`max="${f.max}"`:""} ${f.type==="number"&&f.step!=null?`step="${f.step}"`:""} value="${esc(v??"")}" ${f.required?"required":""} ${dis}>`;
     else if(f.type==="date") ctl = `<input class="inp" id="${id}" type="date" value="${esc(v||"")}" ${dis}>`;
+    else if(f.type==="datetime") ctl = `<input class="inp" id="${id}" type="datetime-local" value="${esc(v||"")}" ${dis}>`; // giá trị dạng "YYYY-MM-DDTHH:MM"
     else if(f.type==="textarea") ctl = `<textarea class="inp" id="${id}" ${dis}>${esc(v||"")}</textarea>`;
     else if(f.type==="check") ctl = `<label style="display:flex;gap:8px;align-items:center;font-weight:500;color:var(--ink)"><input type="checkbox" id="${id}" ${v?"checked":""} ${dis}> ${esc(f.label)}</label>`;
     else if(f.type==="select"){
@@ -352,7 +369,7 @@ function openForm(cfg){
     /* "badge": không phải ô nhập, chỉ hiển thị tĩnh (vd số giờ còn lại cạnh ô nhập giờ) – dùng f.text, không đọc/ghi vals */
     else if(f.type==="badge") ctl = `<div class="field-badge"><span class="pill ${esc(f.tone||"info")}">${esc(f.text||"")}</span></div>`;
     const labelFor = f.type==="search" ? id+"_q" : id;
-    return `<div class="field" ${f.half?'data-half="1"':""} data-field="${f.key}">${f.type==="check"?"":`<label for="${labelFor}">${esc(f.label)}${f.required?' <span style="color:var(--bad)">*</span>':""}</label>`}${ctl}${hint!==""?`<div class="hint" data-hint="${f.key}">${esc(hint)}</div>`:`<div class="hint" data-hint="${f.key}"></div>`}</div>`;
+    return `<div class="field" ${f.half?'data-half="1"':""} data-field="${f.key}" ${f.showIf && !f.showIf(vals)?"hidden":""}>${f.type==="check"?"":`<label for="${labelFor}">${esc(f.label)}${f.required?' <span style="color:var(--bad)">*</span>':""}</label>`}${ctl}${hint!==""?`<div class="hint" data-hint="${f.key}">${esc(hint)}</div>`:`<div class="hint" data-hint="${f.key}"></div>`}</div>`;
   };
   const body = () => {
     let out = cfg.info || ""; let buf = [];
@@ -366,13 +383,16 @@ function openForm(cfg){
     <div class="drawer-f"><div>${cfg.onDelete?'<button class="btn danger" data-del>Xoá</button>':""}</div><div class="toolbar">${cfg.extraBtn?`<button class="btn" data-extra>${esc(cfg.extraBtn.label)}</button>`:""}<button class="btn" data-close>${cfg.readOnly?"Đóng":"Huỷ"}</button>${cfg.readOnly?"":`<button class="btn primary" data-save>${esc(cfg.saveLabel||"Lưu")}</button>`}</div></div></div>`;
   const dlg = layer.querySelector(".drawer");
   const api = { setOptions(key, opts){ optsOverride[key]=opts; vals[key]=""; const f = cfg.fields.find(x=>x.key===key); const wrap = dlg.querySelector(`[data-field="${key}"]`); if(f && wrap){ const tmp=document.createElement("div"); tmp.innerHTML=fieldHTML(f); wrap.replaceWith(tmp.firstElementChild); } } };
+  /* f.showIf(vals) → ẩn/hiện ô theo giá trị các ô khác (vd "Cả ngày" ẩn ô giờ ở form sự kiện lịch); chạy lại sau mỗi
+     lần đổi giá trị. Ô đang ẩn không bị bắt buộc nhập (xem kiểm tra required ở nút Lưu). */
+  const applyShowIf = () => { for(const f of cfg.fields){ if(!f.showIf) continue; const w = dlg.querySelector(`[data-field="${f.key}"]`); if(w) w.hidden = !f.showIf(vals); } };
   const readInputs = () => { for(const f of cfg.fields){ if(!f.key) continue; const el = dlg.querySelector("#f_"+f.key); if(!el) continue; if(f.type==="check") vals[f.key]=el.checked; else if(f.type==="number") vals[f.key]=el.value===""?null:+el.value; else if(f.type!=="seg" && f.type!=="images") vals[f.key]=el.value||(f.type==="date"?null:""); } };
   const close = () => { layer.innerHTML=""; document.removeEventListener("keydown", onKey); if(prevFocus && prevFocus.focus) prevFocus.focus(); };
   const onKey = e => { if(e.key==="Escape") close(); };
   document.addEventListener("keydown", onKey);
   dlg.addEventListener("click", async e => {
     const sb = e.target.closest(".seg-in button");
-    if(sb){ const k=sb.dataset.k; const v=JSON.parse(sb.dataset.v); vals[k]=v; sb.parentElement.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed", b===sb)); const f=cfg.fields.find(x=>x.key===k); const hn=dlg.querySelector(`[data-hint="${k}"]`); if(f && hn && typeof f.hint==="function") hn.textContent=f.hint(v, vals); return; }
+    if(sb){ const k=sb.dataset.k; const v=JSON.parse(sb.dataset.v); vals[k]=v; applyShowIf(); sb.parentElement.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed", b===sb)); const f=cfg.fields.find(x=>x.key===k); const hn=dlg.querySelector(`[data-hint="${k}"]`); if(f && hn && typeof f.hint==="function") hn.textContent=f.hint(v, vals); return; }
     if(e.target.closest("[data-imgpick]")){ const inp = dlg.querySelector("[data-imgfile]"); if(inp) inp.click(); return; }
     const ix = e.target.closest("[data-imgdel]");
     if(ix){ const fi = cfg.fields.find(x=>x.type==="images"); if(fi){ vals[fi.key] = (vals[fi.key]||[]).filter((_, j) => j!==+ix.dataset.imgdel); dlg.querySelector("#f_"+fi.key).innerHTML = imgFieldHTML(vals[fi.key]); } return; }
@@ -380,7 +400,7 @@ function openForm(cfg){
     if(so){ searchPick(so.closest(".search-dd").dataset.key, so.dataset.sv, so.dataset.sl); return; }
     if(e.target.closest("[data-save]")){
       readInputs();
-      for(const f of cfg.fields){ if(f.required && (vals[f.key]==null || vals[f.key]==="")){ toast("Còn thiếu: "+f.label); return; } }
+      for(const f of cfg.fields){ if(f.required && !(f.showIf && !f.showIf(vals)) && (vals[f.key]==null || vals[f.key]==="")){ toast("Còn thiếu: "+f.label); return; } }
       const btn = e.target.closest("[data-save]"); btn.disabled=true;
       try{ await cfg.onSave(vals); close(); }catch(err){ btn.disabled=false; if(err && err.message) toast(err.message); }
       return;
@@ -390,7 +410,7 @@ function openForm(cfg){
   });
   dlg.addEventListener("change", e => {
     const el = e.target; if(!el.id || !el.id.startsWith("f_")) return;
-    const key = el.id.slice(2); const f = cfg.fields.find(x=>x.key===key); readInputs();
+    const key = el.id.slice(2); const f = cfg.fields.find(x=>x.key===key); readInputs(); applyShowIf();
     if(f && f.onChange) f.onChange(vals[key], api);
     const hn = dlg.querySelector(`[data-hint="${key}"]`); if(f && hn && typeof f.hint==="function") hn.textContent=f.hint(vals[key], vals);
     cfg.fields.forEach(g=>{ if(typeof g.hint==="function"){ const h2=dlg.querySelector(`[data-hint="${g.key}"]`); if(h2) h2.textContent=g.hint(vals[g.key], vals); } });

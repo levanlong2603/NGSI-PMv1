@@ -37,7 +37,7 @@ ACTIONS["exinfo"] = t => {
   }
   // còn lại: "load:" (nhân sự quá tải)
   openForm({title:"Nhân sự", subtitle:a.person, values:{}, fields:[], readOnly:true,
-    extraBtn:{label:"Đi đến xử lý", onClick:()=>{ S.me=a.person; store("me",S.me); S.view="load"; store("view",S.view); render(); }},
+    extraBtn:{label:"Đi đến xử lý", onClick:()=>{ S.me=a.person; store("me",S.me); S.view="input"; S.weekTab="load"; store("view",S.view); render(); }},
     info:`<h3 style="margin-bottom:12px">${esc(a.title)}</h3><div class="kv"><dt>Nhân sự</dt><dd>${esc(a.person)}</dd><dt>Mức sử dụng</dt><dd>${esc(a.desc)}</dd></div>`});
 };
 function periodInfo(anchor, kind){

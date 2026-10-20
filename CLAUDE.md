@@ -192,7 +192,28 @@ PM sau này bám đúng thực tế):
 ## Màn hình hiện có
 Lõi (`frontend/js/views/`): Dashboard (`exec-dashboard.js`), Tổng quan dự án – chỉ xem (`project-overview.js`),
 Tải tuần (`weekly-load.js`), Nhập theo tuần (`weekly-input.js`), Kế hoạch dự án (`plan.js`), Cài đặt
-(`settings.js`), Hướng dẫn (`help.js`). Module mở rộng (`frontend/js/modules/`, nạp sau lõi): Góp ý
+(`settings.js`), Hướng dẫn (`help.js`).
+**"Việc trong tuần" = 1 mục menu, 3 tab** (đồng bộ nguyên từ `ptkt-appv1`, theo yêu cầu người dùng): Tải tuần /
+Đầu việc / Lịch (`.rp-tabs`, `weekTabs()`/`viewWeek()`/`ACTIONS["weektab"]` cuối `weekly-input.js`, state `S.weekTab`
+= `"load"|"tasks"|"calendar"`; mặc định `S.canEdit` → Tải tuần, nhân viên → Đầu việc). Mục menu `"load"` riêng ĐÃ
+BỎ khỏi `VIEWS` (`VIEW_RENDER.load` vẫn còn nhưng không ai điều hướng tới); `state.js` tự đổi `store("view")==="load"`
+cũ → `"input"`+tab Tải tuần. Mọi chỗ điều hướng tới Tải tuần phải đặt `S.view="input"; S.weekTab="load"` (đã sửa
+`golo` ở `events.js`, "Đi đến xử lý" ở `exec-dashboard.js`); tới bảng nhập thì `S.weekTab="tasks"` (chuông vướng mắc,
+`ui.js`). Nút **"Nhật ký tuần"** ở tab Đầu việc ĐÃ BỎ (giống ptkt – tab Lịch thay chỗ); `worklog.js` vẫn nạp để
+Báo cáo tuần đọc lại nhật ký cũ (`S.worklogs`), không còn đường nhập mới.
+**Tab "Lịch"** – `frontend/js/modules/calendar.js` + `css/calendar.css` (chép nguyên văn ptkt-appv1, tiền tố `cal`/
+`CAL_`): lịch TUẦN 7 cột + hàng "Cả ngày" + lưới giờ, dùng chung `S.week`/`S.me` ("Tất cả" = mọi người kèm tên);
+bấm ô giờ/ô cả ngày để thêm, bấm sự kiện để sửa/xoá; nhắc trước 30 phút ở chuông + thông báo trình duyệt
+(`calUpcoming()`/`calTick()`, `renderHeader()` ở `ui.js` gọi nếu tồn tại). Dữ liệu collection mới **`events`**
+(`RULES.events="own"`, nhánh kiểm tra riêng trong PUT `/api/doc/:coll/:id` ở `backend/server.js`: chỉ giữ
+`{title, allDay, start, end, place, note, person}`, kiểm tra định dạng/thứ tự giờ, nhân viên chỉ tạo cho chính mình,
+`person:""` = sự kiện cả phòng chỉ trưởng/phó phòng/admin tạo). Không trùng tên với route SSE `/api/events`
+(collection đi qua `/api/doc/events/...`). `openForm()` (`ui.js`) có thêm kiểu field **`datetime`**
+(`datetime-local`, giá trị `"YYYY-MM-DDTHH:MM"`) và tuỳ chọn **`showIf(vals)`** (ẩn/hiện ô theo giá trị ô khác, ô
+đang ẩn không bị bắt buộc nhập; CSS `.field[hidden]` ở `base.css`) – dùng chung được cho form khác. Đã test
+Playwright: 3 tab, thêm sự kiện giờ + cả ngày, máy chủ trả 400 khi giờ kết thúc trước giờ bắt đầu, điện thoại
+không tràn ngang. **Server .205 chưa có** collection `events` cho tới khi deploy code này.
+Module mở rộng (`frontend/js/modules/`, nạp sau lõi): Góp ý
 (`feedback.js`, collection `feedback`), Báo cáo (`reports.js`, xuất Excel/PDF, không lưu dữ liệu riêng –
 chỉ đọc lại `M`/`S`; 3 tab ngang hàng: "Báo cáo tuần" – theo dữ liệu Nhập theo tuần/Tải tuần (lọc Loại dự
 án/Nhân sự/Tuần), bảng chi tiết gộp ô (rowspan, class `.rp-sec-grn`) theo cấp Người thực hiện (chỉ khi xem
@@ -300,7 +321,7 @@ nút `+`/`✕` mỗi dòng (`ACTIONS["addcatrow"]`/`["delcatrow"]`) chèn/xoá n
   gợi ý, trưởng phòng tự chọn lại). **Đã chạy script chuyển đổi 1 lần** cho CSDL lập trình cá nhân (sqlite)
   khi còn ở dãy số trung gian, ánh xạ theo thứ hạng tương đối: `{1:0.8, 2:1.1, 3:1.7, 4:2.0}` – mọi nhân sự
   hiện có đều rơi vào mức `0,8` (thấp nhất), **vẫn là giá trị hợp lệ ở dãy số mới** nên không cần migrate
-  lại lần 2. **Chưa chạy script này trên CSDL máy chủ thật** (`ngsi` trên 192.168.11.205) vì lúc đổi chưa
+  lại lần 2. **Chưa chạy script này trên CSDL máy chủ thật** (`ngsi` trên 192.168.3.205) vì lúc đổi chưa
   có nhân sự thật nào được nhập – nếu sau này phát hiện có `staff.factor` cũ dạng số nguyên 1–4 trên đó,
   ánh xạ về đúng dãy mới (`{1:0.8, 2:1, 3:1.2, 4:1.5}`, không có giá trị cũ nào map thẳng tới `2`) trước
   khi tin số liệu Capacity.
@@ -949,7 +970,7 @@ việc phụ thuộc" **[XONG]** → (5) "Nhập Excel" đọc công thức đ�
 ## Triển khai
 Máy chủ thật: mã ở `/opt/ptkt`, CSDL MariaDB `ptkt` (user `ptkt`@localhost), dịch vụ systemd `ptkt`, Nginx. Quy trình cập nhật: sao lưu (`deploy/backup.sh`) → chép mã mới vào `/opt/ptkt` (giữ `.env` và dữ liệu) → `npm ci --omit=dev` → `systemctl restart ptkt`. Luôn sao lưu trước khi cập nhật.
 
-**NGSI-PMv1 (web này) đã triển khai thật trên CÙNG máy chủ** (`192.168.11.205`), cổng ngoài **8081** (thay
+**NGSI-PMv1 (web này) đã triển khai thật trên CÙNG máy chủ** (`192.168.3.205`), cổng ngoài **8081** (thay
 hẳn "PMIS" – hệ thống FastAPI của đội khác từng chạy ở cổng này, đã sao lưu đầy đủ trước khi gỡ – xem lịch
 sử phiên làm việc nếu cần khôi phục): mã ở `/opt/ngsi`, CSDL MariaDB `ngsi` (user `ngsi`@localhost), dịch vụ
 systemd `ngsi`, Nginx site `/etc/nginx/sites-available/ngsi` (proxy `8081` → Node nội bộ `127.0.0.1:3001`,
@@ -966,7 +987,7 @@ rõ "chỉ dành cho ptkt, không áp dụng cho ngsi", không xoá vì có th�
   `/bin/bash`, khoá SSH riêng `~/.ssh/authorized_keys` của `ngsi`) + hook `hooks/post-receive` (bản sao của
   `deploy/post-receive` trong repo này – đã sửa sẵn `BRANCH="main"`/`TARGET="/opt/ngsi"`/restart `ngsi`,
   không cần tự đổi tay nữa). Máy cá nhân đã cấu hình sẵn: khoá riêng `~/.ssh/ngsi_deploy`, alias
-  `Host ngsi-deploy` trong `~/.ssh/config` (trỏ `192.168.11.205`, user `ngsi`), git remote `ngsi` trỏ
+  `Host ngsi-deploy` trong `~/.ssh/config` (trỏ `192.168.3.205`, user `ngsi`), git remote `ngsi` trỏ
   `ngsi-deploy:/opt/ngsi-repo.git`. Cập nhật mã: `git push ngsi main` – hook tự `checkout -f` vào
   `/opt/ngsi`, `npm ci --omit=dev`, restart dịch vụ (sudoers riêng `ngsi ALL=(root) NOPASSWD:
   /bin/systemctl restart ngsi`, không cần mật khẩu). `.env`/CSDL không hề bị đụng tới mỗi lần push.

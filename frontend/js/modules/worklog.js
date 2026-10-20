@@ -5,7 +5,9 @@
    workload/báo cáo/tiến độ dự án (không đọc M, không được M.* đọc lại) – chỉ là "sổ tay" cá nhân.
    Quyền: "own-week" như weeks (RULES ở backend/server.js) – nhân viên chỉ thấy/ghi nhật ký của chính
    mình (và chỉ tuần hiện tại trở đi, tuần cũ khoá); trưởng phòng/phó phòng/admin thấy/ghi được của mọi
-   người (qua "Tôi là" ở thanh bên, dùng chung S.me với Việc trong tuần/Tải tuần). */
+   người (qua "Tôi là" ở thanh bên, dùng chung S.me với Việc trong tuần/Tải tuần).
+   LƯU Ý: nút "Nhật ký tuần" ở Việc trong tuần đã bỏ khi gộp 3 tab Tải tuần/Đầu việc/Lịch (đồng bộ ptkt-appv1 – tab
+   "Lịch", modules/calendar.js, thay chỗ nhật ký). Module vẫn nạp để Báo cáo tuần đọc lại nhật ký đã ghi (S.worklogs). */
 ON_SESSION.push(db => {
   const cutoff = addDays(mondayOf(todayISO()), -7*156);
   db.collection("worklog").where("week", ">=", cutoff).onSnapshot(snap => {

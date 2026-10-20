@@ -10,7 +10,7 @@ main.addEventListener("click", e => {
   if(a==="exper"){ S.period = t.dataset.k; render(); return; }
   if(a==="exrefresh"){ render(); toast("Đã làm mới"); return; }
   if(a==="expr"){ S.exPr = t.dataset.p; render(); return; }
-  if(a==="golo"){ S.view="load"; store("view","load"); render(); return; }
+  if(a==="golo"){ S.view="input"; S.weekTab="load"; store("view","input"); render(); return; }
   /* S.projOpenId=null: lỡ đang mở trang chi tiết 1 dự án (xem "goplan" bên dưới) mà bấm "Xem tất cả"/"Quay
      lại tổng quan" ở nơi khác thì phải về đúng danh sách, không kẹt lại trang chi tiết cũ. */
   if(a==="godash"){ S.view="dash"; S.projOpenId=null; store("view","dash"); render(); return; }

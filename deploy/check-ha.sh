@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # CHỈ DÀNH CHO "ptkt" (Phòng Kỹ thuật) – web anh em dùng cụm 2 máy SERVER3/SERVER4 + nhân bản MariaDB.
-# Web "ngsi" (Phòng Quản lý dự án, repo này) đang triển khai 1 máy duy nhất (192.168.11.205, xem CLAUDE.md
+# Web "ngsi" (Phòng Quản lý dự án, repo này) đang triển khai 1 máy duy nhất (192.168.3.205, xem CLAUDE.md
 # mục "Triển khai"), KHÔNG có cụm HA – script này không áp dụng được cho ngsi, giữ lại chỉ để đối chiếu.
 # Kiểm tra nhanh sức khoẻ một node trong cụm 2 máy (SERVER3/SERVER4).
 # Dùng:  sudo /opt/ptkt/deploy/check-ha.sh
