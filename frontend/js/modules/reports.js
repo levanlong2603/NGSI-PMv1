@@ -110,9 +110,9 @@ function rpBuildWeek(){
     const phaseCode = (p && t) ? taskPhase(p, t.id) : "";
     const phaseName = (p && t) ? ((p._phases.find(ph=>ph.code===phaseCode)||{}).name || phaseCode || "Khác") : "Khác";
     return {
-      person: e.person, projectId: e.projectId, projectName: p ? p.name : "(dự án đã xoá)",
+      person: e.person, projectId: e.projectId, projectName: p ? p.name : entryProjName(e),
       phaseCode, phase: phaseName,
-      name: t ? planShortName(t.dv) : "(đầu việc đã xoá)",
+      name: entryTaskName(e),
       detail: e.work || "", deadline: t ? t.deadline : null, status: e.status || "",
       /* Vướng mắc tính TẠI ĐÚNG TUẦN w đang xem (mang sang từ tuần trước nếu tuần này chưa hoàn thành và
          không nhập lại), không chỉ lấy ghi chú của riêng lượt nhập tuần này – xem rpIssueAt() ở trên.

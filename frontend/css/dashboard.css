@@ -44,6 +44,11 @@
 .ex-ubar .t i{display:block; height:100%; border-radius:3px}
 .ex-ubar b{width:44px; text-align:right; font-size:12.5px}
 .ex-ubar b.over{color:var(--bad)}
+/* Dashboard → Phân bổ workload: 2 thanh Dự kiến / Thực tế cho mỗi người, nhãn cố định bên trái */
+.ex-ubar2{margin-top:3px}
+.ex-ubar2 .lb{width:52px; flex:none; font-size:11.5px; color:var(--ink-2)}
+.ex-ubar2 .t{height:9px}
+.ex-wl-legend{display:flex; flex-wrap:wrap; gap:4px 14px; margin:-2px 0 6px}
 .ex-tag{display:inline-block; padding:2px 8px; border-radius:5px; font-size:11.5px; font-weight:700; white-space:nowrap}
 .tg-red{background:var(--bad-soft); color:var(--bad)} .tg-org{background:var(--warn-soft); color:var(--warn)} .tg-yel{background:var(--warn-soft); color:var(--warn)}
 .tg-grn{background:var(--ok-soft); color:var(--ok)} .tg-blu{background:var(--info-soft); color:var(--info)} .tg-gry{background:var(--line-2); color:var(--ink-2)}

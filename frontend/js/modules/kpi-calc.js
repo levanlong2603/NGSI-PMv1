@@ -20,7 +20,7 @@
 const KPI_CALC = (() => {
   const onNode = typeof module!=="undefined" && !!module.exports;
   const U = onNode ? require("../core/utils.js") : {iso, parse, addDays, mondayOf, slug};
-  const K = onNode ? require("../core/constants.js") : {PT_MULT, wlOf};
+  const K = onNode ? require("../core/constants.js") : {PT_MULT, wlOf, WEEK_HOURS, entryWl};
 
   const DEFAULT = {
     weights: {volume:20, difficulty:20, quality:25, progress:20, capability:15},
@@ -83,12 +83,12 @@ const KPI_CALC = (() => {
        ảnh hưởng hiển thị: kpi.js chỉ đọc t.owner/t.doer như cờ true/false, không hiện lại chuỗi tên này. */
     const aliasMap = new Map((data.staff||[]).filter(s=>s.alias).map(s=>[s.alias, s.name]));
     const canon = raw => raw ? (aliasMap.get(raw) || raw) : raw;
-    const cap = new Map((data.staff||[]).map(s => [s.name, Math.round((+s.hours||0)*(1-(+s.pct||0))*(+s.factor||1)*10)/10]));
+    const cap = new Map((data.staff||[]).map(s => [s.name, K.WEEK_HOURS]));
     const docs = [...(data.weeks||[])].sort((a,b) => String(a.week).localeCompare(String(b.week)) || String(a.id||a._id||"").localeCompare(String(b.id||b._id||"")));
     const entries = [], latest = new Map(), doneWk = new Map();
     for(const w of docs) for(const e of (w.entries||[])){
-      const wl = e.hours!=null ? Math.round(e.hours*(e.pt ? K.PT_MULT[e.pt] : 1)*10)/10 : K.wlOf(e.qm, e.pt);
-      const en = {week:w.week, person:w.person, projectId:e.projectId, taskId:e.taskId, status:e.status||"", pt:e.pt||null, wl, hours:e.hours!=null ? +e.hours||0 : null};
+      const wl = K.entryWl(e);
+      const en = {week:w.week, person:w.person, projectId:e.projectId, taskId:e.taskId, status:e.status||"", pt:e.pt||null, wl, hours:"actH" in e ? (e.actH!=null ? +e.actH||0 : null) : (e.hours!=null ? +e.hours||0 : null)};
       entries.push(en);
       const k = e.projectId+"|"+e.taskId;
       if(en.status){ const cur = latest.get(k); if(!cur || en.week > cur.week) latest.set(k, en); }

@@ -281,6 +281,7 @@ textarea.inp{min-height:74px; resize:vertical}
 .search-dd button{all:unset; display:block; width:100%; box-sizing:border-box; padding:7px 9px; border-radius:6px; cursor:pointer; font-size:13.5px; color:var(--ink)}
 .search-dd button:hover,.search-dd button:focus-visible{background:var(--hover)}
 .search-dd-empty{padding:10px 9px; color:var(--ink-3); font-size:13px}
+.search-dd .search-dd-free{color:var(--teal-hover); font-weight:600; border-top:1px dashed var(--line); border-radius:0 0 6px 6px}
 .row2{display:grid; grid-template-columns:1fr 1fr; gap:12px}
 .toast{position:fixed; left:50%; bottom:calc(20px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); background:var(--ink); color:var(--surface); padding:9px 16px; border-radius:9px; font-size:13.5px; z-index:40; box-shadow:0 6px 20px rgba(0,0,0,.2)}
 .empty{padding:34px 18px; text-align:center; color:var(--ink-3)}

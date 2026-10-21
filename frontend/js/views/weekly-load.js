@@ -52,7 +52,7 @@ function viewLoad(){
     <div class="stat ${blocked.length?"bad":""}"><div class="v">${blocked.length}</div><div class="l">Đầu việc bị vướng</div></div></div>`;
   const legend = `<div class="legend">${TYPES.map(t=>`<span>${typeDot(t)}${t}</span>`).join("")}<span><span class="tdot" style="background:transparent;border-left:2px dashed var(--ink-3)"></span>80%</span></div>`;
   h += `<section class="panel"><div class="panel-h"><h2>Workload từng người</h2>${legend}</div>`;
-  h += `<div class="lrow lrow-h small muted"><div>Nhân sự</div><div>Tải tuần</div><div class="hide-m">Workload / Capacity</div><div class="hide-m" style="text-align:center">Hoàn thành</div><div>Trạng thái</div></div>`;
+  h += `<div class="lrow lrow-h small muted"><div>Nhân sự</div><div>Tải tuần</div><div class="hide-m">Giờ thực tế / 40h</div><div class="hide-m" style="text-align:center">Hoàn thành</div><div>Trạng thái</div></div>`;
   h += rows.map(r => {
     /* % của mỗi đoạn màu tính theo tỉ trọng trong tổng workload người này (không chia lại maxScale) – vì
        đoạn màu nằm bên trong .fill, mà .fill đã co theo maxScale rồi; chia thêm lần nữa sẽ làm thanh co
@@ -62,7 +62,7 @@ function viewLoad(){
       <div class="lbar" title="${pct(r.u)}"><div class="fill" style="width:${Math.min(100,(r.u||0)*100)}%">${segs}</div>
         <i class="tick" style="left:80%"></i>
         <span class="lbar-pct" style="color:${r.u>1?"var(--bad)":r.u>=.8?"var(--warn)":"var(--ink)"}">${r.L.es.length?pct(r.u):"–"}</span></div>
-      <div class="small muted hide-m">${fmt1(r.L.wl)} / ${fmt1(r.s.cap)} điểm</div>
+      <div class="small muted hide-m">${fmt1(r.L.wl)}h / ${fmt1(r.s.cap)}h</div>
       <div class="upct hide-m" style="text-align:center; color:${!r.L.es.length?"inherit":r.done.ratio>=1?"var(--ok)":r.done.ratio>0?"var(--teal-hover)":"inherit"}">${r.L.es.length?pct(r.done.ratio):"–"}</div>
       <div><span class="pill ${r.state[0]}">${r.state[1]}</span></div></div>`;
   }).join("") || `<div class="empty">Chưa có nhân sự. Thêm ở mục Cài đặt.</div>`;
@@ -73,13 +73,13 @@ function viewLoad(){
   let arr, mx, label, empty, rowHtml, restLabel;
   if(simAs){
     const byT = new Map();
-    for(const e of wkE){ if(e.wl==null) continue; const k=e.projectId+"|"+e.taskId; const o=byT.get(k)||{wl:0, type:e.type, status:e.status, name:e.ref?planShortName(e.ref.t.dv):"(đầu việc đã xoá)", proj:(M.pById.get(e.projectId)||{}).name||"(dự án đã xoá)"}; o.wl+=e.wl; byT.set(k,o); }
+    for(const e of wkE){ if(e.wl==null) continue; const k=e.projectId+"|"+e.taskId; const o=byT.get(k)||{wl:0, type:e.type, status:e.status, name:entryTaskName(e), proj:entryProjName(e)}; o.wl+=e.wl; byT.set(k,o); }
     arr = [...byT.values()].sort((a,b)=>b.wl-a.wl); mx = Math.max(1,...arr.map(o=>o.wl));
     label = "workload theo đầu việc"; empty = "Chưa có dữ liệu cho tuần này."; restLabel = "đầu việc khác";
     rowHtml = o=>`<div class="hbar"><span>${esc(o.name)} <span class="muted small">· ${esc(o.proj)}</span> ${o.status?stPill(o.status):""}</span><div class="t"><i style="width:${o.wl/mx*100}%; background:${TYPE_COLOR[o.type]}"></i></div><span style="text-align:right">${fmt1(o.wl)}</span></div>`;
   } else {
     const byP = new Map();
-    for(const e of wkE){ if(e.wl==null) continue; const p=M.pById.get(e.projectId); const k=p?p.name:"(Đã xoá)"; const o=byP.get(k)||{wl:0,type:p?p.type:"Nội bộ",people:new Set(),name:k}; o.wl+=e.wl; o.people.add(e.person); byP.set(k,o); }
+    for(const e of wkE){ if(e.wl==null) continue; const p=M.pById.get(e.projectId); const k=entryProjName(e); const o=byP.get(k)||{wl:0,type:p?p.type:"Nội bộ",people:new Set(),name:k}; o.wl+=e.wl; o.people.add(e.person); byP.set(k,o); }
     arr = [...byP.values()].sort((a,b)=>b.wl-a.wl); mx = Math.max(1,...arr.map(o=>o.wl));
     label = "workload theo dự án"; empty = "Chưa có dữ liệu cho tuần này."; restLabel = "dự án khác";
     rowHtml = o=>`<div class="hbar"><span>${esc(o.name)} <span class="muted small">· ${o.people.size} người</span></span><div class="t"><i style="width:${o.wl/mx*100}%; background:${TYPE_COLOR[o.type]}"></i></div><span style="text-align:right">${fmt1(o.wl)}</span></div>`;

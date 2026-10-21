@@ -362,7 +362,7 @@ function openForm(cfg){
     else if(f.type==="search"){
       const opts = optsOverride[f.key] || f.options;
       const cur = opts.find(o=>String(o[0])===String(v??""));
-      ctl = `<div class="search-field"><input type="text" class="inp" id="${id}_q" data-searchkey="${f.key}" autocomplete="off" placeholder="${esc(f.placeholder||"Gõ để tìm…")}" value="${esc(cur?cur[1]:"")}" ${dis}>
+      ctl = `<div class="search-field"><input type="text" class="inp" id="${id}_q" data-searchkey="${f.key}" autocomplete="off" placeholder="${esc(f.placeholder||"Gõ để tìm…")}" value="${esc(cur?cur[1]:(f.freeKey?vals[f.freeKey]||"":""))}" ${dis}>
         <input type="hidden" id="${id}" value="${esc(v??"")}">
         <div class="search-dd" id="${id}_dd" data-key="${f.key}" hidden></div></div>`;
     }
@@ -382,7 +382,9 @@ function openForm(cfg){
     <div class="drawer-b" id="dlgB">${body()}</div>
     <div class="drawer-f"><div>${cfg.onDelete?'<button class="btn danger" data-del>Xoá</button>':""}</div><div class="toolbar">${cfg.extraBtn?`<button class="btn" data-extra>${esc(cfg.extraBtn.label)}</button>`:""}<button class="btn" data-close>${cfg.readOnly?"Đóng":"Huỷ"}</button>${cfg.readOnly?"":`<button class="btn primary" data-save>${esc(cfg.saveLabel||"Lưu")}</button>`}</div></div></div>`;
   const dlg = layer.querySelector(".drawer");
-  const api = { setOptions(key, opts){ optsOverride[key]=opts; vals[key]=""; const f = cfg.fields.find(x=>x.key===key); const wrap = dlg.querySelector(`[data-field="${key}"]`); if(f && wrap){ const tmp=document.createElement("div"); tmp.innerHTML=fieldHTML(f); wrap.replaceWith(tmp.firstElementChild); } } };
+  const api = { setOptions(key, opts){ optsOverride[key]=opts; vals[key]=""; { const sf = cfg.fields.find(x=>x.key===key); if(sf && sf.freeKey) vals[sf.freeKey]=""; } const f = cfg.fields.find(x=>x.key===key); const wrap = dlg.querySelector(`[data-field="${key}"]`); if(f && wrap){ const tmp=document.createElement("div"); tmp.innerHTML=fieldHTML(f); wrap.replaceWith(tmp.firstElementChild); } },
+    /* Đổi giá trị 1 ô từ code (vd ô ngày chỉ-đọc đi theo đầu việc vừa chọn) – vẽ lại đúng ô đó như setOptions */
+    setValue(key, v){ vals[key]=v; const f = cfg.fields.find(x=>x.key===key); const wrap = dlg.querySelector(`[data-field="${key}"]`); if(f && wrap){ const tmp=document.createElement("div"); tmp.innerHTML=fieldHTML(f); wrap.replaceWith(tmp.firstElementChild); } } };
   /* f.showIf(vals) → ẩn/hiện ô theo giá trị các ô khác (vd "Cả ngày" ẩn ô giờ ở form sự kiện lịch); chạy lại sau mỗi
      lần đổi giá trị. Ô đang ẩn không bị bắt buộc nhập (xem kiểm tra required ở nút Lưu). */
   const applyShowIf = () => { for(const f of cfg.fields){ if(!f.showIf) continue; const w = dlg.querySelector(`[data-field="${f.key}"]`); if(w) w.hidden = !f.showIf(vals); } };
@@ -398,9 +400,11 @@ function openForm(cfg){
     if(ix){ const fi = cfg.fields.find(x=>x.type==="images"); if(fi){ vals[fi.key] = (vals[fi.key]||[]).filter((_, j) => j!==+ix.dataset.imgdel); dlg.querySelector("#f_"+fi.key).innerHTML = imgFieldHTML(vals[fi.key]); } return; }
     const so = e.target.closest(".search-dd button[data-sv]");
     if(so){ searchPick(so.closest(".search-dd").dataset.key, so.dataset.sv, so.dataset.sl); return; }
+    const sfree = e.target.closest(".search-dd button[data-free]");
+    if(sfree){ searchFree(sfree.closest(".search-dd").dataset.key, sfree.dataset.sl); return; }
     if(e.target.closest("[data-save]")){
       readInputs();
-      for(const f of cfg.fields){ if(f.required && !(f.showIf && !f.showIf(vals)) && (vals[f.key]==null || vals[f.key]==="")){ toast("Còn thiếu: "+f.label); return; } }
+      for(const f of cfg.fields){ if(f.required && !(f.showIf && !f.showIf(vals)) && (vals[f.key]==null || vals[f.key]==="") && !(f.freeKey && vals[f.freeKey])){ toast("Còn thiếu: "+f.label); return; } }
       const btn = e.target.closest("[data-save]"); btn.disabled=true;
       try{ await cfg.onSave(vals); close(); }catch(err){ btn.disabled=false; if(err && err.message) toast(err.message); }
       return;
@@ -455,10 +459,25 @@ function openForm(cfg){
        vì đổ nguyên danh sách (có thể cả trăm dòng) ra ngay, đúng yêu cầu người dùng. */
     if(!nq){ dd.hidden = true; dd.innerHTML = ""; return; }
     const list = searchOptsOf(key).filter(o=>searchNorm(o[1]).includes(nq)).slice(0,200);
-    dd.innerHTML = list.length ? list.map(o=>`<button type="button" data-sv="${esc(o[0])}" data-sl="${esc(o[1])}">${esc(o[1])}</button>`).join("") : `<div class="search-dd-empty">Không tìm thấy</div>`;
+    /* f.freeKey: cho phép nhập tay ngoài danh sách gợi ý – thêm 1 dòng "Dùng … (nhập tay)" cuối danh sách;
+       chữ nhập tay lưu ở vals[f.freeKey], còn vals[key] để rỗng (xem searchFree()). */
+    const f = cfg.fields.find(x=>x.key===key), raw = String(q??"").trim();
+    const freeBtn = f && f.freeKey ? `<button type="button" data-free="1" data-sl="${esc(raw)}" class="search-dd-free">+ Dùng “${esc(raw)}” (nhập tay)</button>` : "";
+    dd.innerHTML = list.length ? list.map(o=>`<button type="button" data-sv="${esc(o[0])}" data-sl="${esc(o[1])}">${esc(o[1])}</button>`).join("") + freeBtn : (freeBtn || `<div class="search-dd-empty">Không tìm thấy</div>`);
     dd.hidden = false;
   };
+  /* Nhập tay (ô có f.freeKey): bỏ chọn gợi ý, lưu chữ vào vals[f.freeKey] rồi gọi onChange như khi chọn */
+  const searchFree = (key, text) => {
+    const f = cfg.fields.find(x=>x.key===key); if(!f || !f.freeKey) return;
+    vals[key] = ""; vals[f.freeKey] = text;
+    const q = dlg.querySelector("#f_"+key+"_q"); if(q) q.value = text;
+    const hid = dlg.querySelector("#f_"+key); if(hid) hid.value = "";
+    const dd = dlg.querySelector("#f_"+key+"_dd"); if(dd){ dd.hidden = true; dd.innerHTML = ""; }
+    if(f.onChange) f.onChange(vals[key], api);
+    const hn = dlg.querySelector(`[data-hint="${key}"]`); if(hn && typeof f.hint==="function") hn.textContent = f.hint(vals[key], vals);
+  };
   const searchPick = (key, sv, sl) => {
+    { const f = cfg.fields.find(x=>x.key===key); if(f && f.freeKey) vals[f.freeKey] = ""; }
     vals[key] = sv;
     const q = dlg.querySelector("#f_"+key+"_q"); if(q) q.value = sl;
     /* Phải ghi cả vào input ẩn (id="f_"+key) chứ không chỉ "vals" trong bộ nhớ – readInputs() lúc bấm Lưu
@@ -484,6 +503,13 @@ function openForm(cfg){
       setTimeout(() => {
         const dd = dlg.querySelector("#f_"+key+"_dd"); if(dd) dd.hidden = true;
         const cur = searchOptsOf(key).find(o=>String(o[0])===String(vals[key]??""));
+        /* Ô cho nhập tay: rời ô với chữ khác lựa chọn đang lưu → coi chữ đó là giá trị nhập tay */
+        const f = cfg.fields.find(x=>x.key===key), typed = inp.value.trim();
+        if(f && f.freeKey && !(cur && cur[1]===inp.value)){
+          if(typed){ if(typed!==vals[f.freeKey] || vals[key]) searchFree(key, typed); return; }
+          if(vals[key] || vals[f.freeKey]){ vals[key] = ""; vals[f.freeKey] = ""; const hid = dlg.querySelector("#f_"+key); if(hid) hid.value = ""; if(f.onChange) f.onChange("", api); }
+          return;
+        }
         inp.value = cur ? cur[1] : "";
       }, 150);
     });
@@ -495,6 +521,7 @@ function openForm(cfg){
       e.preventDefault();
       const first = dd && dd.querySelector("button[data-sv]");
       if(first) searchPick(key, first.dataset.sv, first.dataset.sl);
+      else { const fb = dd && dd.querySelector("button[data-free]"); if(fb) searchFree(key, fb.dataset.sl); }
     });
   }
   layer.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click", close));

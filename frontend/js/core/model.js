@@ -41,7 +41,8 @@ function msClassify(tasksInOrder, mode){
 let M = null;
 function derive(){
   const today = todayISO(), thisMon = mondayOf(today);
-  const staff = S.staff.map(s => ({...s, cap: Math.round((+s.hours||0)*(1-(+s.pct||0))*(+s.factor||1)*10)/10}));
+  /* Capacity = WEEK_HOURS (40 giờ/tuần, constants.js) cho mọi người → Tải tuần = tổng giờ thực tế / 40. */
+  const staff = S.staff.map(s => ({...s, cap: WEEK_HOURS}));
   /* Đăng ký Capacity theo CẢ Họ tên đầy đủ lẫn Tên viết tắt (s.alias, Cài đặt → Nhân sự – xem
      canonStaffName() ở constants.js) để tra đúng Capacity dù task.owner/p.pm… lưu tên nào trong 2 tên. */
   const capOf = new Map();
@@ -54,12 +55,14 @@ function derive(){
   const entries = [];
   for(const w of S.weeks) for(const e of (w.entries||[])){
     const ref = taskMap.get(e.projectId+"|"+e.taskId);
-    /* Workload của một lượt nhập tuần = e.hours (số giờ thực tế đã làm, người nhập tự gõ trong ô "Thời
-       gian thực hiện") × PT_MULT[Độ phức tạp] – Quy mô (e.qm) ở màn Nhập theo tuần giờ chỉ để tham
-       khảo/ước lượng, KHÔNG tham gia công thức này nữa (tránh tính trùng với giờ thật đã gõ). Thiếu Độ
-       phức tạp → hệ số mặc định 1,0 (không chặn). Các lượt nhập cũ chỉ có e.qm (từ trước khi có ô giờ
-       thật) vẫn đọc lại qua wlOf(e.qm, e.pt) để không đổi dữ liệu lịch sử. */
-    const wl = e.hours!=null ? Math.round(e.hours*(e.pt?PT_MULT[e.pt]:1)*10)/10 : wlOf(e.qm, e.pt);
+    /* Bỏ hẳn lượt nhập trỏ tới dự án/đầu việc ĐÃ XOÁ (không tra được, cũng không phải việc nhập tay "custom-…")
+       – không hiện ở Việc trong tuần/Tải tuần/Báo cáo, không tính vào tải. Dữ liệu gốc trong tài liệu tuần giữ
+       nguyên, không xoá. */
+    if(!ref && !isCustomEntry(e)) continue;
+    /* Workload của một lượt nhập tuần = số giờ thực hiện THỰC TẾ (e.actH, ô "Số giờ thực hiện thực tế
+       trong tuần") – không nhân Độ phức tạp; giờ dự kiến (e.hours) chỉ để lập kế hoạch. Xem entryWl() ở
+       constants.js (gồm cả cách đọc lại dữ liệu cũ). */
+    const wl = entryWl(e);
     entries.push({...e, week:w.week, person:w.person, docId:w._id, ref, wl, type: ref ? ref.p.type : (pById.get(e.projectId)||{}).type || "Nội bộ"});
   }
   // latest per task
@@ -214,3 +217,11 @@ function weekIssues(){
    gọi không phải tự rẽ nhánh riêng cho task thô (vd e.ref.t) và task đã derive(). */
 function taskPhase(p, taskId){ const t = (p._tasks||[]).find(x=>x.id===taskId); return t ? t.phase : ""; }
 function taskPathNo(p, taskId){ const t = (p._tasks||[]).find(x=>x.id===taskId); return t ? t.pathNo : ""; }
+/* Lượt nhập tuần có thể là việc NHẬP TAY (không có trong Kế hoạch dự án – việc nội bộ/ngoài dự án, xem
+   entryForm() ở weekly-input.js): projectId/taskId khi đó là mã "custom-…" không tra được, tên lưu thẳng ở
+   e.projName / e.taskName. Dùng 2 hàm này ở mọi nơi cần hiện tên dự án/đầu việc của 1 lượt nhập. */
+function entryProjName(e){ const p = M.pById.get(e.projectId); return p ? p.name : (e.projName || "(dự án đã xoá)"); }
+function entryTaskName(e){ return e.ref ? planShortName(e.ref.t.dv) : (e.taskName || "(đầu việc đã xoá)"); }
+function isCustomEntry(e){ return String(e.taskId||"").startsWith("custom-"); }
+/* Lượt nhập còn hợp lệ: đầu việc còn trong Kế hoạch dự án, hoặc là việc nhập tay (dùng khi đọc thẳng tài liệu tuần thô, vd chép tuần trước) */
+function entryAlive(e){ return isCustomEntry(e) || M.taskMap.has(e.projectId+"|"+e.taskId); }

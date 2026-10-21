@@ -82,13 +82,15 @@ function viewExec(){
   const E = M.entries.filter(e=>inP.has(e.week) && (!simAs || e.person===simAs));
   /* Đầu việc Hủy không tính vào workload, đồng bộ với loadFor() ở weekly-load.js */
   const sumWl = arr => arr.reduce((a,e)=>a+(e.status==="Hủy"?0:(e.wl||0)),0);
+  /* Workload DỰ KIẾN = tổng giờ dự kiến (e.hours); lượt nhập rất cũ chỉ có Quy mô → dùng e.wl */
+  const sumPlan = arr => arr.reduce((a,e)=>a+(e.status==="Hủy"?0:(e.hours!=null?(+e.hours||0):(e.wl||0))),0);
   const wl = sumWl(E);
   const capWeek = staffList.reduce((a,s)=>a+s.cap,0), cap = capWeek*nW;
   // people
   const people = staffList.map(s => {
-    const es = E.filter(e=>e.person===s.name); const w = sumWl(es); const c = s.cap*nW; const u = c ? w/c : 0;
+    const es = E.filter(e=>e.person===s.name); const w = sumWl(es), pw = sumPlan(es); const c = s.cap*nW; const u = c ? w/c : 0, up = c ? pw/c : 0;
     const st = !es.length ? ["tg-gry","Chưa nhập"] : es.some(e=>e.wl==null) ? ["tg-gry","Thiếu quy mô"] : u>1 ? ["tg-red","Quá tải"] : u>=.8 ? ["tg-org","Tải cao"] : u>=.6 ? ["tg-grn","Bình thường"] : ["tg-grn","Còn khả năng"];
-    return {s, w, c, u, st, n:es.length};
+    return {s, w, pw, c, u, up, st, n:es.length};
   }).sort((a,b)=>b.u-a.u);
   const over = people.filter(p=>p.n && p.u>1).length, high = people.filter(p=>p.n && p.u>=.8 && p.u<=1).length, low = people.filter(p=>p.n && p.u<.8).length, none = people.filter(p=>!p.n).length;
   const U = cap ? wl/cap : 0;
@@ -161,7 +163,6 @@ function viewExec(){
         <td class="c"><span class="ex-tag ${r[0]}">${r[1]}</span></td>
         <td class="c"><span class="ex-tag ${{"Đang làm":"tg-grn","Đang vướng":"tg-red","Tạm dừng":"tg-org"}[t.status]||"tg-gry"}">${t.status==="Tạm dừng"?"Đang chờ":esc(t.status)}</span></td></tr>`; }).join("") || `<tr><td colspan="12" class="ex-empty">Không có công việc phù hợp.</td></tr>`}
       </tbody></table></div><div class="ex-legend">Ma sát: 0 không vướng · 1 vướng nhẹ · 2 vướng vừa · 3 vướng nhiều · 4 phụ thuộc nghiêm trọng · 5 bị đình trệ</div></div></div>`;
-  const utilColor = u => u>1?"var(--bad)":u>=.8?"var(--warn)":"var(--teal)";
   const exRelDay = deadline => { const d = days(M.today, deadline); return d<=0?"Trong ngày":d===1?"Ngày mai":`${d} ngày nữa`; };
   // Row 3: CẦN ƯU TIÊN XỬ LÝ (ma sát cao, trễ hạn ưu tiên Cao, quá tải, dự án rủi ro cao chưa có ở trên) + LỊCH HẠN SẮP TỚI
   const soonList = T.filter(t=>OPEN.has(t.status) && t.deadline && t.deadline>=M.today && days(M.today,t.deadline)<=14).sort((a,b)=>a.deadline.localeCompare(b.deadline));
@@ -172,7 +173,7 @@ function viewExec(){
   for(const t of T.filter(t=>isLate(t) && t.pr==="Cao" && !(t.ms>=3))){
     act.push({level:["tg-red","Cao"], title:t.dv.replace(/^[0-9A-Z]{1,2}\d?\.\s*[^–]*–\s*/,""), desc:`Quá hạn ${dm(t.deadline)} · Ưu tiên Cao`, person:t.owner||"–", project:t.p.name, btn:"Xem lại kế hoạch", go:"task:"+t.p.id+"|"+t.id});
     actPid.add(t.p.id); }
-  for(const p of people.filter(p=>p.n && p.u>1)) act.push({level:["tg-org","Trung bình"], title:`Quá tải ${pct(p.u)}`, desc:`Capacity ${fmt1(p.c)} điểm · Workload ${fmt1(p.w)} điểm`, person:p.s.name, project:"–", btn:"Điều phối công việc", go:"load:"+encodeURIComponent(p.s.name)});
+  for(const p of people.filter(p=>p.n && p.u>1)) act.push({level:["tg-org","Trung bình"], title:`Quá tải ${pct(p.u)}`, desc:`Thực tế ${fmt1(p.w)}h / ${fmt1(p.c)}h`, person:p.s.name, project:"–", btn:"Điều phối công việc", go:"load:"+encodeURIComponent(p.s.name)});
   for(const p of runP.filter(p=>risk(p)[2]===3 && !actPid.has(p.id))){ const note = p._late?`${p._late} đầu việc quá hạn`:p._stuck?`${p._stuck} đầu việc đang vướng`:"Rủi ro cao, cần theo dõi sát";
     act.push({level:["tg-org","Trung bình"], title:"Dự án rủi ro cao", desc:note, person:p.owner||"–", project:p.name, btn:"Xem dự án", go:"p:"+p.id}); }
   /* "Xem chi tiết" chỉ MỞ POPUP xem thông tin (readOnly), không điều hướng sang trang khác nữa – người
@@ -186,11 +187,15 @@ function viewExec(){
       <div class="ex-scroll" style="max-height:340px">${soonList.map(t=>{ const d=new Date(t.deadline+"T00:00:00"); const dd=String(d.getDate()).padStart(2,"0"); const r = days(M.today,t.deadline)<=3;
         return `<div class="ex-dl"><div class="ex-dl-d"><div class="n">${dd}</div><div class="m">Th${d.getMonth()+1}</div></div><div class="ex-dl-b"><div class="w">${esc(t.dv.replace(/^[0-9A-Z]{1,2}\d?\.\s*[^–]*–\s*/,""))}</div><div class="muted small">${esc(t.p.name)} · ${esc(t.owner||"–")}</div></div><div class="ex-dl-r${r?" soon":""}">${exRelDay(t.deadline)}</div></div>`; }).join("")||`<div class="ex-empty">Không có đầu việc nào đến hạn trong 14 ngày tới.</div>`}</div></div></div>`;
   // Row 4: PHÂN BỔ WORKLOAD NHÂN SỰ (top 5 theo mức sử dụng) + TIẾN ĐỘ DỰ ÁN TRỌNG ĐIỂM
-  const topPeople = [...people].sort((a,b)=>b.u-a.u).slice(0,5);
+  /* Xếp theo mức cao hơn giữa dự kiến và thực tế – đầu tuần chưa ai điền giờ thực tế thì vẫn thấy ai đang
+     được giao nhiều việc nhất. Mỗi người 2 thanh: Dự kiến (--indigo) và Thực tế (--teal); % vượt 100% tô đỏ. */
+  const topPeople = [...people].sort((a,b)=>Math.max(b.u,b.up)-Math.max(a.u,a.up)).slice(0,5);
+  const wlBar = (lbl, u, h, c, color, n) => `<div class="ex-ubar ex-ubar2" title="${lbl}: ${fmt1(h)}h / ${fmt1(c)}h"><span class="lb">${lbl}</span><div class="t"><i style="width:${Math.min(100,u*100)}%; background:${color}"></i></div><b class="${u>1?"over":""}">${n?pct(u):"–"}</b></div>`;
   const keyP = [...runP].sort((a,b)=>risk(b)[2]-risk(a)[2] || (a._prog||0)-(b._prog||0));
   h += `<div class="ex-row ex-r3">
     <div class="ex-card"><div class="ex-h"><h3>PHÂN BỔ WORKLOAD NHÂN SỰ</h3><button class="lnk" data-act="golo">Xem chi tiết ›</button></div>
-      ${topPeople.length?topPeople.map(p=>`<div class="ex-pr"><div class="ex-pr-top"><span>${esc(p.s.name)}${p.s.title?`<span class="muted" style="font-weight:400"> · ${esc(p.s.title)}</span>`:""}</span><span class="ex-tag ${p.st[0]}">${p.st[1]}</span></div><div class="ex-ubar"><div class="t"><i style="width:${Math.min(100,p.u*100)}%; background:${utilColor(p.u)}"></i></div><b class="${p.u>1?"over":""}">${p.n?pct(p.u):"–"}</b></div></div>`).join(""):`<div class="ex-empty">Chưa có dữ liệu nhập ${P.short} này.</div>`}</div>
+      <ul class="ex-list ex-wl-legend"><li><i style="background:var(--indigo)"></i>Dự kiến</li><li><i style="background:var(--teal)"></i>Thực tế</li><li class="muted">trên ${fmt1(WEEK_HOURS*nW)}h</li></ul>
+      ${topPeople.length?topPeople.map(p=>`<div class="ex-pr"><div class="ex-pr-top"><span>${esc(p.s.name)}${p.s.title?`<span class="muted" style="font-weight:400"> · ${esc(p.s.title)}</span>`:""}</span><span class="ex-tag ${p.st[0]}">${p.st[1]}</span></div>${wlBar("Dự kiến", p.up, p.pw, p.c, "var(--indigo)", p.n)}${wlBar("Thực tế", p.u, p.w, p.c, "var(--teal)", p.n)}</div>`).join(""):`<div class="ex-empty">Chưa có dữ liệu nhập ${P.short} này.</div>`}</div>
     <div class="ex-card"><div class="ex-h"><h3>TIẾN ĐỘ DỰ ÁN TRỌNG ĐIỂM</h3><button class="lnk" data-act="godash">Xem tất cả ›</button></div>
       <div class="ex-scroll" style="max-height:260px"><table class="ex-t"><thead><tr><th>Dự án</th><th>Tiến độ</th><th class="c">Mốc tiếp theo</th><th class="c">Nguy cơ trễ</th><th>Ghi chú</th></tr></thead><tbody>
       ${keyP.map(p=>{ const r=risk(p); const note = p._late?`${p._late} đầu việc quá hạn`:p._stuck?`${p._stuck} đầu việc đang vướng`:p._soon?`${p._soon} đầu việc sắp đến hạn`:"Đúng kế hoạch";

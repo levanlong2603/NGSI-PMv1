@@ -100,6 +100,18 @@ function wlOf(qm, pt){
   if(!qm) return null;
   return Math.round(QM_HOURS[qm]*(pt ? PT_MULT[pt] : 1)*10)/10;
 }
+/* Tải tuần = Tổng số giờ THỰC TẾ của các đầu việc trong tuần / WEEK_HOURS (40 giờ/tuần, như nhau cho mọi
+   người – không còn trừ % họp hay nhân Hệ số năng lực ở Cài đặt → Nhân sự nữa). */
+const WEEK_HOURS = 40;
+/* Workload (giờ) của 1 lượt nhập tuần = số giờ thực hiện thực tế (e.actH), KHÔNG nhân Độ phức tạp.
+   Chưa điền giờ thực tế (việc chưa xong) → 0. Lượt nhập cũ từ trước khi tách 2 ô dự kiến/thực tế (chưa có
+   khoá actH) → coi e.hours là giờ thực tế; cũ hơn nữa chỉ có e.qm → đọc qua wlOf() như trước. Dùng chung
+   cho model.js và kpi-calc.js. */
+function entryWl(e){
+  if("actH" in e) return e.actH!=null ? Math.round((+e.actH||0)*10)/10 : 0;
+  if(e.hours!=null) return Math.round((+e.hours||0)*10)/10;
+  return wlOf(e.qm, e.pt);
+}
 const ICONS = {
   dash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
   load:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
@@ -157,4 +169,4 @@ function registerView({id, label, icon, iconSvg, render, position = "main"}){
   if(position === "bottom" || i < 0) VIEWS.push(def); else VIEWS.splice(i, 0, def);
   VIEW_RENDER[id] = render;
 }
-if(typeof module!=="undefined" && module.exports) module.exports = {QM_HOURS, PT_MULT, wlOf};
+if(typeof module!=="undefined" && module.exports) module.exports = {QM_HOURS, PT_MULT, wlOf, WEEK_HOURS, entryWl};
