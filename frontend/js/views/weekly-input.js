@@ -24,11 +24,11 @@ function viewInput(){
     <div class="toolbar" style="margin-left:auto">
     ${`
     ${locked?"":`<button class="btn" data-act="copyprev" ${canCopy?"":"disabled"} title="${canCopy?"Chép các việc chưa xong của tuần trước":"Tuần trước không có việc dở dang"}">Chép việc dở dang từ tuần trước</button>
-    <button class="btn" data-act="syncdue" ${nDue?"":"disabled"} title="${nDue?`Thêm ${nDue} đầu việc được phân công có ngày Bắt đầu hoặc Kết thúc HĐ điều chỉnh trong tuần này`:"Không còn đầu việc nào có ngày Bắt đầu/Kết thúc HĐ điều chỉnh trong tuần này chưa có trong danh sách"}">Đồng bộ việc cần làm trong tuần</button>
+    <button class="btn" data-act="syncdue" ${nDue?"":"disabled"} title="${nDue?`Thêm ${nDue} đầu việc được phân công có ngày Bắt đầu hoặc Kết thúc dự kiến trong tuần này`:"Không còn đầu việc nào có ngày Bắt đầu/Kết thúc dự kiến trong tuần này chưa có trong danh sách"}">Đồng bộ việc cần làm trong tuần</button>
     <button class="btn primary" data-act="addentry">+ Thêm việc</button>`}`}</div></div></section>`;
   if(locked) h += `<p class="small muted" style="margin:-8px 0 14px">Tuần ${isoWeek(w)} đã qua, chỉ trưởng phòng mới sửa được dữ liệu tuần này.</p>`;
   if(!L.es.length) return h + `<section class="panel"><div class="empty"><b>Chưa có việc nào trong tuần ${isoWeek(w)}</b>${locked?"":"Thêm việc bạn làm trong tuần, hoặc chép các việc dở dang từ tuần trước."}</div></section>`;
-  return h + `<section class="panel tbl-wrap"><table style="table-layout:fixed"><thead><tr><th style="width:20%">Đầu việc</th><th style="width:20%">Việc đã làm</th><th style="width:8%; text-align:center">Giờ dự kiến</th><th style="width:10%; text-align:center">Giờ thực tế</th><th style="width:14%">Trạng thái cuối tuần</th><th style="width:12%">Ma sát</th><th style="width:16%">Vướng / cần hỗ trợ</th></tr></thead><tbody>${inputTreeRows(L.es, locked)}</tbody></table></section>
+  return h + `<section class="panel tbl-wrap"><table style="table-layout:fixed"><thead><tr><th style="width:20%">Đầu việc</th><th style="width:20%">Chi tiết công việc</th><th style="width:8%; text-align:center">Giờ dự kiến</th><th style="width:10%; text-align:center">Giờ thực tế</th><th style="width:14%">Trạng thái cuối tuần</th><th style="width:12%">Ma sát</th><th style="width:16%">Vướng / cần hỗ trợ</th></tr></thead><tbody>${inputTreeRows(L.es, locked)}</tbody></table></section>
     ${locked?"":'<p class="small muted">Bấm vào một dòng để sửa hoặc xoá.</p>'}`;
 }
 /* "Tất cả" (chỉ trưởng phòng): liệt kê gộp việc đã nhập của mọi người trong tuần, gom theo người.
@@ -46,7 +46,7 @@ function viewInputAll(w){
     rows += inputGroupRow(0, person, `${pes.length} đầu việc · ${fmt1(wl)}h / ${fmt1(WEEK_HOURS)}h`, 7);
     for(const e of pes) rows += inputAllRow(e);
   }
-  return `<section class="panel tbl-wrap"><table style="table-layout:fixed"><thead><tr><th style="width:26%">Đầu việc</th><th style="width:16%">Việc đã làm</th><th style="width:7%; text-align:center">Giờ dự kiến</th><th style="width:9%; text-align:center">Giờ thực tế</th><th style="width:13%">Trạng thái cuối tuần</th><th style="width:12%">Ma sát</th><th style="width:17%">Vướng / cần hỗ trợ</th></tr></thead><tbody>${rows}</tbody></table></section>
+  return `<section class="panel tbl-wrap"><table style="table-layout:fixed"><thead><tr><th style="width:26%">Đầu việc</th><th style="width:16%">Chi tiết công việc</th><th style="width:7%; text-align:center">Giờ dự kiến</th><th style="width:9%; text-align:center">Giờ thực tế</th><th style="width:13%">Trạng thái cuối tuần</th><th style="width:12%">Ma sát</th><th style="width:17%">Vướng / cần hỗ trợ</th></tr></thead><tbody>${rows}</tbody></table></section>
     <p class="small muted">Bấm vào một dòng để sửa hoặc xoá.</p>`;
 }
 /* Cột "Ma sát" (mức độ + nguyên nhân) và "Vướng / cần hỗ trợ" (ghi chú) tách riêng 2 ô, không ghép chung
@@ -136,7 +136,7 @@ function entryForm(entry, person){
   const e = entry ? {...entry} : {id:uid("e"), projectId:"", taskId:"", work:"", qm:null, hours:null, actH:null, pt:null, status:"", ms:null, nn:"", note:""};
   /* Lượt nhập cũ (chưa tách 2 ô): e.hours từng là giờ tính tải → đưa sẵn vào ô thực tế khi mở sửa. */
   if(entry && !("actH" in entry)) e.actH = entry.hours ?? null;
-  /* "Ghi chú của trưởng phòng" – không phải trường của riêng lượt nhập tuần (e.note là "Vướng mắc" của
+  /* "Note dự án" – không phải trường của riêng lượt nhập tuần (e.note là "Vướng mắc" của
      người nhập), mà đọc/ghi thẳng task.note của đúng đầu việc đang chọn – CÙNG một trường đang hiện ở
      Kế hoạch dự án (taskForm, plan.js), nên sửa bên nào cũng tự khớp bên kia (xem onSave bên dưới và
      route PATCH /api/doc/projects/:id/task-note ở server.js). */
@@ -148,9 +148,9 @@ function entryForm(entry, person){
   if(e.projectId && !M.pById.has(e.projectId)){ e.projectId = CUSTOM_PROJ; e.projName = e.projName||""; }
   if(e.taskId && !taskRef0){ e.taskId = ""; e.taskName = e.taskName||""; }
   e.mgrNote = taskRef0 ? (taskRef0.t.note||"") : "";
-  /* Ngày bắt đầu/kết thúc của đầu việc theo "Kế hoạch HĐ điều chỉnh" (adjStart/adjEnd – cùng mốc dùng cho
+  /* Ngày bắt đầu/kết thúc của đầu việc theo "Kế hoạch dự kiến" (expStart/expEnd – cùng mốc dùng cho
      "Đồng bộ việc cần làm trong tuần") – chỉ để xem, không lưu vào lượt nhập tuần; sửa ở Kế hoạch dự án. */
-  const taskDates = (pid, tid) => { const r = pid && tid ? M.taskMap.get(pid+"|"+tid) : null; return {s: r ? r.t.adjStart||"" : "", e: r ? r.t.adjEnd||"" : ""}; };
+  const taskDates = (pid, tid) => { const r = pid && tid ? M.taskMap.get(pid+"|"+tid) : null; return {s: r ? r.t.expStart||"" : "", e: r ? r.t.expEnd||"" : ""}; };
   const d0 = taskDates(e.projectId, e.taskId); e.tStart = d0.s; e.tEnd = d0.e;
   /* "Còn lại" hiển thị cho người nhập = 40h − tổng giờ thực tế cả tuần (giống hệt số "Giờ thực tế tuần"
      hiện ở đầu trang). Các dòng "Tổng … tuần" dưới mỗi ô giờ thì trừ riêng phần của chính việc đang sửa
@@ -201,9 +201,9 @@ function entryForm(entry, person){
       {key:"taskId", label:"Đầu việc", type:"search", freeKey:"taskName", placeholder:"Gõ để tìm theo kế hoạch, hoặc nhập tên việc khác…", options:taskOpts(e.projectId, e.taskId), required:true,
         hint:(v,vals)=>!v && vals.taskName ? "Việc nhập tay – không gắn với đầu việc nào trong Kế hoạch dự án." : "",
         onChange:(v,f)=>{ const d = taskDates(document.getElementById("f_projectId")?.value, v); f.setValue("tStart", d.s); f.setValue("tEnd", d.e); }},
-      {key:"tStart", label:"Ngày bắt đầu (HĐ điều chỉnh)", type:"date", disabled:true, half:true},
-      {key:"tEnd", label:"Ngày kết thúc (HĐ điều chỉnh)", type:"date", disabled:true, half:true,
-        hint:(v,vals)=>vals.taskId && !vals.tStart && !v ? "Đầu việc chưa có Kế hoạch HĐ điều chỉnh – sửa ở Kế hoạch dự án." : ""},
+      {key:"tStart", label:"Ngày bắt đầu (dự kiến)", type:"date", disabled:true, half:true},
+      {key:"tEnd", label:"Ngày kết thúc (dự kiến)", type:"date", disabled:true, half:true,
+        hint:(v,vals)=>vals.taskId && !vals.tStart && !v ? "Đầu việc chưa có Kế hoạch dự kiến – sửa ở Kế hoạch dự án." : ""},
       {key:"work", label:"Việc đã làm trong tuần", type:"textarea"},
       {key:"qm", label:"Quy mô (ước lượng, chỉ để tham khảo)", type:"seg", options:[1,2,3,4,5].map(n=>[n,String(n)]), required:true, half:true,
         /* Chỉ để ước lượng/tham khảo – không tham gia công thức tính tải nữa (xem hours bên dưới). */
@@ -224,11 +224,9 @@ function entryForm(entry, person){
       {key:"ms", label:"Ma sát (chỉ khi bị vướng)", type:"seg", options:[[null,"Không"],...[1,2,3,4,5].map(n=>[n,String(n)])], half:true, hint:v=>({1:"Vướng nhẹ",2:"Vướng vừa",3:"Vướng nhiều",4:"Phụ thuộc nghiêm trọng",5:"Bị đình trệ"}[v]||"")},
       {key:"nn", label:"Nguyên nhân", type:"select", options:[["",""],...CAUSES.map(c=>[c,c])], half:true},
       {key:"note", label:"Vướng mắc / cần ai hỗ trợ", type:"textarea"},
-      /* Cùng 1 trường task.note với "Ghi chú của trưởng phòng" ở Kế hoạch dự án (plan.js) – chỉ trưởng
-         phòng/phó phòng/admin ghi được, để đưa hướng giải quyết ngay tại đây khi xem vướng mắc (vd từ
-         chuông thông báo) mà không cần sang Kế hoạch dự án. */
-      ...(taskRef0 ? [{key:"mgrNote", label:"Ghi chú của trưởng phòng", type:"textarea", disabled:!S.canEdit,
-        hint:()=>S.canEdit?"":"Chỉ trưởng phòng/phó phòng sửa được ghi chú này."}] : [])
+      /* Cùng trường task.note ở Kế hoạch dự án, cùng quyền của nhân sự phụ trách dự án. */
+      ...(taskRef0 ? [{key:"mgrNote", label:"Note dự án", type:"textarea", disabled:!canNoteProject(taskRef0.p),
+        hint:()=>canNoteProject(taskRef0.p)?"":"Chỉ lãnh đạo hoặc nhân sự phụ trách dự án sửa được ghi chú này."}] : [])
     ],
     saveLabel: isNew ? "Thêm việc" : "Lưu thay đổi",
     onSave: async v => {
@@ -260,11 +258,10 @@ function entryForm(entry, person){
         try{ await S.db.api("PATCH", `/api/doc/projects/${v.projectId}/task-pt`, {taskId:v.taskId, pt:v.pt}); }
         catch(e){ toast("Đã lưu việc trong tuần, nhưng không đồng bộ được độ phức tạp vào Kế hoạch dự án."); }
       }
-      /* Đồng bộ "Ghi chú của trưởng phòng" về đúng đầu việc – chỉ gửi khi có đổi và người lưu đủ quyền
-         (ô bị khoá với nhân viên nên v.mgrNote khi đó luôn bằng giá trị cũ, không gửi thừa). */
-      if(S.canEdit && taskRef && v.mgrNote!==undefined && v.mgrNote!==(taskRef.t.note||"")){
+      /* Đồng bộ Note về đúng đầu việc khi người lưu có quyền phụ trách dự án. */
+      if(taskRef && canNoteProject(taskRef.p) && v.mgrNote!==undefined && v.mgrNote!==(taskRef.t.note||"")){
         try{ await S.db.api("PATCH", `/api/doc/projects/${v.projectId}/task-note`, {taskId:v.taskId, note:v.mgrNote||""}); }
-        catch(e){ toast("Đã lưu việc trong tuần, nhưng không đồng bộ được ghi chú trưởng phòng vào Kế hoạch dự án."); }
+        catch(e){ toast("Đã lưu việc trong tuần, nhưng không đồng bộ được Note vào Kế hoạch dự án."); }
       }
     },
     onDelete: isNew ? null : async () => {
@@ -273,8 +270,8 @@ function entryForm(entry, person){
     }
   });
 }
-/* Đầu việc của `person` (Phụ trách hoặc Phối hợp, mọi dự án) có Bắt đầu HOẶC Kết thúc "Kế hoạch HĐ điều chỉnh"
-   (t.adjStart / t.adjEnd) rơi vào tuần bắt đầu từ thứ Hai `week`. Lấy cả dòng nhóm lẫn việc con (theo yêu cầu người dùng – mỗi dòng
+/* Đầu việc của `person` (Phụ trách hoặc Phối hợp, mọi dự án) có Bắt đầu HOẶC Kết thúc "Kế hoạch dự kiến"
+   (t.expStart / t.expEnd) rơi vào tuần bắt đầu từ thứ Hai `week`. Lấy cả dòng nhóm lẫn việc con (theo yêu cầu người dùng – mỗi dòng
    có hạn riêng trong tuần đều đưa vào), chỉ bỏ việc đã Hoàn thành/Hủy (giữ OPEN). Trả về [{p, t}] với t là
    đầu việc đã enrich (p._tasks). */
 function dueTasksForWeek(person, week){
@@ -283,7 +280,7 @@ function dueTasksForWeek(person, week){
   for(const p of M.projects){
     for(const t of (p._tasks||[])){
       const inWeek = x => { const d = x ? String(x).slice(0,10) : ""; return !!d && d>=week && d<=end; };
-      if(!(inWeek(t.adjStart) || inWeek(t.adjEnd)) || !OPEN.has(t.status)) continue;
+      if(!(inWeek(t.expStart) || inWeek(t.expEnd)) || !OPEN.has(t.status)) continue;
       if(canonStaffName(t.owner)!==person && canonStaffName(t.collab)!==person) continue;
       out.push({p, t});
     }

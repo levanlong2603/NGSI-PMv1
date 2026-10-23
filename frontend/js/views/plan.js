@@ -661,15 +661,8 @@ function taskForm(p, t){
     fields:[
       {key:"no", label:"No.", type:"text", half:true},
       {key:"dv", label:"Đầu việc", type:"text", required:true, half:true},
-      /* CẬP NHẬT: ô textarea này đổi từ "Nội dung chi tiết" (task.detail, tĩnh/mô tả đầu việc) sang "Note"
-         (task.note, "Ghi chú của trưởng phòng") theo yêu cầu người dùng – nội dung hiện/sửa ở đây giờ là
-         note, không còn là nội dung đầu việc nữa. `task.detail` KHÔNG còn ô nhập ở form (giữ nguyên giá
-         trị cũ nếu có, xem `onSave` bên dưới – không xoá dữ liệu cũ, chỉ không sửa tiếp được qua đây).
-         Máy chủ CHẶN THẬT (`canWrite()`/PUT projects, `backend/server.js`) nên dù PUT cả dự án, task.note
-         chỉ trưởng phòng (`S.canEdit`) ghi được – nhân viên gửi gì cũng bị máy chủ ghi đè lại giá trị cũ;
-         vì vậy ô này `disabled` với người không phải trưởng phòng (khớp đúng cách `weekly-input.js` làm
-         với field "mgrNote" cùng ghi vào `task.note`). */
-      {key:"note", label:"Note", type:"textarea", disabled:!S.canEdit, hint: S.canEdit?"":"Chỉ trưởng phòng/phó phòng sửa được."},
+      /* Note dùng chung với Việc trong tuần; task.detail cũ vẫn được giữ khi lưu. */
+      {key:"note", label:"Note", type:"textarea", disabled:!canNoteProject(p)},
       {key:"owner", label:"Phụ trách", type:"select", options:ownerOpts, half:true, hint:()=>ownerOpts.length>1?"":"Dự án chưa gán PM/TM/AM/ACC nào – sửa ở “Sửa thông tin dự án”."},
       {key:"pr", label:"Ưu tiên", type:"seg", options:TASK_PR.map(x=>[x,x]), half:true},
       /* Không bắt buộc chọn Quy mô nữa (theo yêu cầu người dùng, file mẫu thật nhiều đầu việc – nhất là
@@ -773,7 +766,14 @@ ACTIONS["taskdelrow"] = async el => {
    cần điều hướng tiếp (xem ACTIONS["exinfo"] ở exec-dashboard.js). Gọi không kèm tham số (taskForm() ở
    trên, khi nhân viên không có quyền sửa) thì vẫn chỉ xem thuần, không có nút thêm. */
 function openInfo(p, t, extraBtn){
-  openForm({title:"Đầu việc", subtitle:p.name, values:{}, fields:[], readOnly:true, extraBtn,
+  const canNote = canNoteProject(p);
+  openForm({title:"Đầu việc", subtitle:p.name, values:{note:t.note||""},
+    fields:canNote ? [{key:"note", label:"Note", type:"textarea"}] : [], readOnly:!canNote, extraBtn,
+    saveLabel:"Lưu ghi chú",
+    onSave:async v => {
+      await S.db.api("PATCH", `/api/doc/projects/${p.id}/task-note`, {taskId:t.id, note:v.note||""});
+      toast("Đã lưu ghi chú");
+    },
     info:`<h3 style="margin-bottom:12px">${t.no?esc(t.no)+". ":""}${esc(t.dv)}</h3><div class="kv"><dt>Nội dung</dt><dd>${esc(t.detail||"–")}</dd><dt>Phụ trách</dt><dd>${esc(t.owner||"–")}</dd>
     <dt>Trạng thái</dt><dd>${stPill(t.status)}</dd><dt>Cập nhật</dt><dd>${esc(t.upd||"–")}</dd><dt>Ngày cập nhật</dt><dd>${esc(t.updDate||"–")}</dd>
     <dt>Kế hoạch theo HĐ</dt><dd>${dmy(t.hdStart)} – ${dmy(t.deadline)}</dd>
@@ -781,6 +781,6 @@ function openInfo(p, t, extraBtn){
     ${t.expStart||t.expEnd?`<dt>Kế hoạch dự kiến</dt><dd>${dmy(t.expStart)} – ${dmy(t.expEnd)}</dd>`:""}
     ${t.actStart||t.actEnd?`<dt>Kế hoạch thực tế</dt><dd>${dmy(t.actStart)} – ${dmy(t.actEnd)}</dd>`:""}
     <dt>Workload</dt><dd>${t.wl??"–"}</dd>
-    <dt>Note</dt><dd>${esc(t.note||"–")}</dd></div>`});
+    ${canNote?"":`<dt>Note</dt><dd>${esc(t.note||"–")}</dd>`}</div>`});
 }
 

@@ -55,6 +55,12 @@ function canonStaffName(raw){
    bên khác (TM/AM/ACC) chỉ phối hợp. `p.se` đã bỏ khỏi mọi chỗ đọc/kiểm tra quyền (xem CLAUDE.md), vẫn
    còn trong schema tài liệu cũ nhưng không còn ý nghĩa gì. */
 function projectAssigned(p, name){ return !!name && canonStaffName(p.owner)===name; }
+/* Quyền ghi Note độc lập với quyền sửa toàn bộ dự án; luôn dùng nhân sự của tài khoản đăng nhập. */
+function canNoteProject(p){
+  const u = S.user;
+  return !!p && (S.canEdit || (!!u && (p.created_by===u.username || (!!u.staff_name &&
+    [p.owner,p.pm,p.tm,p.am,p.acc].some(n=>canonStaffName(n)===u.staff_name)))));
+}
 function planMatchFilter(p, key){
   const f = PLAN_FILTERS.find(x=>x.key===key) || PLAN_FILTERS[0];
   if(f.key==="Tất cả") return true;

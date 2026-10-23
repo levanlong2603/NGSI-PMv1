@@ -237,6 +237,15 @@ async function canonStaffName(raw) {
   const hit = staff.find(s => s.alias && s.alias === raw);
   return hit ? hit.name : raw;
 }
+/* Note: lãnh đạo, người tạo và nhân sự PM/TM/AM/ACC được phân công trong dữ liệu đang lưu. */
+async function canNoteProject(user, project) {
+  if (FULL_ROLES.has(user.role) || project.created_by === user.username) return true;
+  if (!user.staff_name) return false;
+  for (const name of [project.owner, project.pm, project.tm, project.am, project.acc]) {
+    if (name && (await canonStaffName(name)) === user.staff_name) return true;
+  }
+  return false;
+}
 /* op: "write" (PUT, gồm cả thêm/sửa/xoá đầu việc bên trong) | "delete" (DELETE, xoá cả dự án) */
 async function canWrite(user, coll, id, body, existing, op = "write") {
   const rule = RULES[coll];
@@ -290,15 +299,15 @@ app.put("/api/doc/:coll/:id", auth, A(async (req, res) => {
     for (const t of Array.isArray(body.tasks) ? body.tasks : []) {
       if (t && typeof t === "object" && "sched" in t) { const s = SCHED.sanitize(t.sched); if (s) t.sched = s; else delete t.sched; }
     }
-    // Đánh giá khi hoàn thành (task.eval) và Ghi chú của trưởng phòng (task.note) chỉ trưởng phòng
-    // được ghi; nhân viên gửi gì cũng giữ nguyên giá trị cũ (ẩn/khoá ô nhập ở giao diện chỉ là gợi ý,
-    // quyền thật sự phải chặn ở đây)
+    // Đánh giá vẫn chỉ lãnh đạo ghi; Note cho phép cả nhân sự phụ trách dự án.
+    // Kiểm tra trên dự án đang lưu để không tự nhận quyền qua dữ liệu gửi lên.
     if (!FULL_ROLES.has(req.user.role) && exBody) {
+      const canNote = await canNoteProject(req.user, exBody);
       const exTasks = new Map((exBody.tasks || []).map(t => [t.id, t]));
       for (const t of body.tasks || []) {
         const ex = exTasks.get(t.id) || {};
         t.eval = ex.eval ?? {};
-        t.note = ex.note ?? "";
+        if (!canNote) t.note = ex.note ?? "";
       }
     }
   }
@@ -388,27 +397,26 @@ app.patch("/api/doc/projects/:id/task-pt", auth, A(async (req, res) => {
   audit(u, "set", p); broadcast("projects");
   res.status(204).end();
 }));
-/* Đồng bộ "Ghi chú của trưởng phòng" giữa Nhập theo tuần và Kế hoạch dự án – cả 2 nơi đọc/ghi cùng 1
-   trường task.note nên tự động khớp nhau 2 chiều, không cần đồng bộ riêng gì thêm ngoài route này. Chỉ
-   trưởng phòng/phó phòng/admin (FULL_ROLES) ghi được, khớp đúng quyền đã có sẵn ở taskForm (plan.js) và
-   PUT /api/doc/projects/:id (chặn nhân viên ghi t.note dù PUT cả dự án). Phạm vi hẹp: chỉ sửa đúng
-   trường note của 1 đầu việc, giống cách task-pt ở trên đồng bộ Độ phức tạp. */
+/* Đồng bộ Note giữa Nhập theo tuần và Kế hoạch dự án. Nhân sự phụ trách dự án chỉ sửa
+   đúng trường note qua route này, không được mở rộng quyền sửa các trường khác. */
 app.patch("/api/doc/projects/:id/task-note", auth, A(async (req, res) => {
-  if (!FULL_ROLES.has(req.user.role)) return res.status(403).json({ error: "Chỉ trưởng phòng/phó phòng được ghi chú này" });
   const { id } = req.params;
   const { taskId, note } = req.body || {};
   if (!ID_RE.test(id) || typeof taskId !== "string" || typeof note !== "string")
     return res.status(400).json({ error: "Dữ liệu không hợp lệ" });
   const p = `projects/${id}`;
+  await withDocLock(p, async () => {
   const ex = await store.getDoc(p);
   if (!ex) return res.status(404).json({ error: "Không tìm thấy dự án" });
   const body = JSON.parse(ex);
+  if (!(await canNoteProject(req.user, body))) return res.status(403).json({ error: "Chỉ lãnh đạo hoặc nhân sự phụ trách dự án được sửa Note" });
   const task = (body.tasks || []).find(t => t.id === taskId);
   if (!task) return res.status(404).json({ error: "Không tìm thấy đầu việc" });
   task.note = note;
   await store.upsertDoc(p, "projects", id, JSON.stringify(body), req.user.username);
   audit(req.user, "set", p); broadcast("projects");
   res.status(204).end();
+  });
 }));
 /* Trạng thái hiện tại của từng đầu việc = trạng thái ở lượt nhập tuần gần nhất (có trạng thái), không có thì
    lấy trạng thái ban đầu – cùng cách derive() (frontend/js/core/model.js) suy ra t.status. Dùng cho quy tắc
@@ -455,7 +463,10 @@ app.post("/api/doc/projects/:id/schedule", auth, A(async (req, res) => {
     const work = isNew ? [...tasks, { id: task.id, no: "", dv: "" }] : tasks;
     const set = { ...task };
     delete set.id;
-    if (!FULL_ROLES.has(req.user.role)) { delete set.note; delete set.eval; }
+    if (!FULL_ROLES.has(req.user.role)) {
+      delete set.eval;
+      if (!(await canNoteProject(req.user, doc))) delete set.note;
+    }
     if ("sched" in set) set.sched = SCHED.sanitize(set.sched);
     const status = await taskStatusMap(id, work);
     const sc = scope === "self" ? "self" : "all";
