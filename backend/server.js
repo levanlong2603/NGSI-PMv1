@@ -134,6 +134,12 @@ app.disable("x-powered-by");
 app.set("trust proxy", "loopback");
 app.use(express.json({ limit: "5mb" }));
 app.use(cookieParser());
+/* Nhãn máy chủ (vd "SV3") – đặt SERVER_LABEL trong .env của TỪNG máy (2 máy chạy cùng 1 bản code) để thấy rõ
+   A10 đang chuyển request tới máy nào khi kiểm thử cân bằng tải. Mọi phản hồi mang header X-Served-By (kiểm
+   nhanh bằng curl -I); GET /api/server trả nhãn cho giao diện, không cần đăng nhập. Để trống = không gắn nhãn. */
+const SERVER_LABEL = String(process.env.SERVER_LABEL || "").trim().slice(0, 20);
+if (SERVER_LABEL) app.use((req, res, next) => { res.setHeader("X-Served-By", SERVER_LABEL); next(); });
+app.get("/api/server", (req, res) => { res.set("Cache-Control", "no-store"); res.json({ label: SERVER_LABEL }); });
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "SAMEORIGIN");

@@ -79,6 +79,7 @@ function showLogin(msg){
     <button class="btn primary" type="submit">Đăng nhập</button>
     <div class="login-hint">Quên mật khẩu? Liên hệ trưởng phòng để được hỗ trợ.</div></form>
     <div class="login-foot">NGSI INTERNAL WORKSPACE</div>`;
+  serverTagLoad();
   const f = document.getElementById("loginForm");
   const pwToggle = document.getElementById("lgPwToggle"), pwInput = document.getElementById("lgP");
   pwToggle.addEventListener("click", () => {
@@ -195,3 +196,25 @@ function usersPanel(){
     </tbody></table></div><div class="panel-b small muted">Nhân viên cần được “gắn với nhân sự” để nhập theo tuần. Nhân viên chỉ sửa được dữ liệu tuần của chính mình và các dự án do mình tạo.</div></section>`;
 }
 document.getElementById("userBox").addEventListener("click", e => { const b = e.target.closest("[data-uact]"); if(!b) return; if(b.dataset.uact==="pw") passwordForm(); else logout(); });
+
+/* Nhãn máy chủ đang phục vụ trang (SERVER_LABEL ở .env, vd "SV3") – gắn trước tên ứng dụng ở tiêu đề tab, đầu trang
+   và màn đăng nhập, để thấy A10 cân bằng tải sang máy nào. Hỏi lại mỗi lần tải trang và mỗi lần hiện màn đăng nhập
+   (đăng nhập lại có thể rơi vào máy khác). Tên gốc giữ ở data-base nên gắn lại nhiều lần không bị lặp nhãn. */
+let SERVER_TAG = "";
+function serverTagApply(){
+  const pre = SERVER_TAG ? `(${SERVER_TAG}) ` : "";
+  for(const el of document.querySelectorAll(".topbar-app,.login-head-tx")){
+    if(el.dataset.base==null) el.dataset.base = el.textContent;
+    el.textContent = pre + el.dataset.base;
+  }
+  const root = document.documentElement;
+  if(root.dataset.baseTitle==null) root.dataset.baseTitle = document.title;
+  document.title = pre + root.dataset.baseTitle;
+}
+function serverTagLoad(){
+  fetch("/api/server", {cache:"no-store", credentials:"same-origin"})
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { SERVER_TAG = (j && j.label) || ""; serverTagApply(); })
+    .catch(() => {});
+}
+serverTagLoad();
