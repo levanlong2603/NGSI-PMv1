@@ -46,15 +46,16 @@ function periodInfo(anchor, kind){
   const y = d.getFullYear();
   let m0, m1, label;
   if(kind==="month"){ m0 = d.getMonth(); m1 = m0; label = `Tháng ${m0+1}/${y}`; }
+  else if(kind==="year"){ m0 = 0; m1 = 11; label = `Năm ${y}`; }
   else { const qn = Math.floor(d.getMonth()/3); m0 = qn*3; m1 = m0+2; label = `Quý ${qn+1}/${y}`; }
   const weeks = []; let w = mondayOf(iso(new Date(y, m0, 1)));
   if(parse(w).getMonth()!==m0) w = addDays(w,7);
   while(true){ const wd = parse(w); if(wd.getFullYear()!==y || wd.getMonth()>m1) break; weeks.push(w); w = addDays(w,7); }
-  return {weeks, label, short: kind==="month"?"tháng":"quý"};
+  return {weeks, label, short: kind==="month"?"tháng":kind==="year"?"năm":"quý"};
 }
 function shiftAnchor(anchor, kind, dir){
   if(kind==="week") return addDays(anchor, 7*dir);
-  const d = parse(anchor); const step = kind==="month"?1:3;
+  const d = parse(anchor); const step = kind==="month"?1:kind==="year"?12:3;
   const nd = new Date(d.getFullYear(), d.getMonth()+step*dir, 1);
   const w = mondayOf(iso(nd)); return parse(w).getMonth()===nd.getMonth() ? w : addDays(w,7);
 }
@@ -68,6 +69,26 @@ function donut(segs, center, sub, size){
     <text x="50%" y="${sub?"48%":"52%"}" text-anchor="middle" dominant-baseline="middle" font-size="${size>120?22:19}" font-weight="800" fill="var(--ink)">${esc(center)}</text>
     ${sub?`<text x="50%" y="64%" text-anchor="middle" font-size="12" fill="var(--ink-2)">${esc(sub)}</text>`:""}</svg>`;
 }
+/* Khung "Kết quả hoàn thành trong kỳ" – bố cục lấy y hệt web Kỹ thuật (completionSummaryHtml() ở utils.js
+   bên NGSI-TMv1). PM không có "ngày hoàn thành" nhập riêng như TM, nên số ngày sớm/trễ tính đúng công thức
+   cột "Đánh giá" của Kế hoạch dự án: deadline (Kế hoạch theo HĐ) − actEnd (Kế hoạch thực tế). Việc tính vào
+   kỳ theo tuần chứa actEnd; chưa có actEnd thì theo tuần đầu tiên nhập "Hoàn thành" (t.done). */
+function exCompletionHtml(tasks, weeks, person){
+  const period = new Set(weeks);
+  const doneWeek = t => t.actEnd ? mondayOf(t.actEnd) : t.done;
+  const completed = tasks.filter(t=>t.p?.type!=="Nội bộ" && t.status==="Hoàn thành" && period.has(doneWeek(t))
+    && (!person || t.doers?.includes(person) || canonStaffName(t.owner)===person));
+  const delta = t => t.actEnd && t.deadline ? days(t.actEnd, t.deadline) : null;
+  const early = completed.filter(t=>delta(t)>0).length;
+  const ontime = completed.filter(t=>delta(t)===0).length;
+  const late = completed.filter(t=>delta(t)!=null && delta(t)<0).length;
+  return `<div class="toolbar" style="gap:8px; flex-wrap:wrap"><span class="small muted">Đầu việc dự án hoàn thành so với hạn:</span><span class="pill ok">Sớm ${early}</span><span class="pill info">Đúng hạn ${ontime}</span><span class="pill bad">Trễ ${late}</span><span class="pill mute">Chưa đủ ngày/hạn ${completed.length-early-ontime-late}</span></div>`;
+}
+/* Đồng hồ ở banner lời chào: vẽ sẵn lúc render, rồi tự cập nhật 30 giây/lần mà không render lại cả trang */
+const EX_WD = ["Chủ nhật","Thứ 2","Thứ 3","Thứ 4","Thứ 5","Thứ 6","Thứ 7"];
+function exClockText(){ const d = new Date(), p = n => String(n).padStart(2,"0");
+  return `${EX_WD[d.getDay()]}, ${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} · ${p(d.getHours())}:${p(d.getMinutes())}`; }
+setInterval(() => { const el = document.getElementById("exClock"); if(el) el.textContent = exClockText(); }, 30000);
 function viewExec(){
   const kind = S.period || "week";
   const P = periodInfo(S.week, kind);
@@ -123,11 +144,13 @@ function viewExec(){
   const fr = active.filter(t=>(t.ms||0)>=1).sort((a,b)=>(b.ms||0)-(a.ms||0) || String(a.deadline||"9").localeCompare(String(b.deadline||"9")));
 
   let h = `<div class="ex">
-  <div class="head"><h1>Dashboard</h1>
+  <section class="ex-hero"><div class="ex-hero-l"><span class="ex-wave" aria-hidden="true">👋</span><div><h1>Xin chào, ${esc(S.user?.display_name||S.user?.username||"")}</h1>
+      <p><b>Dashboard</b><span class="ex-dot" aria-hidden="true">·</span>Phòng quản lý dự án<span class="ex-dot" aria-hidden="true">•</span><span id="exClock">${exClockText()}</span><span class="pill mute">${esc(ROLE_LABEL[S.user?.role]||"Nhân viên")}</span></p></div></div>
+    <div class="ex-slogan" lang="en">Do good things<svg viewBox="0 0 200 16" aria-hidden="true"><path d="M6 11 C 60 3, 130 3, 196 9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></div>
     <div class="ex-ctl"><div class="ex-wk"><button data-act="exnav" data-d="-1" aria-label="Kỳ trước">‹</button><div class="lb">${esc(P.label)}</div><button data-act="exnav" data-d="1" aria-label="Kỳ sau">›</button></div>
-      <div class="ex-seg" role="group" aria-label="Kỳ báo cáo">${[["week","Tuần"],["month","Tháng"],["quarter","Quý"]].map(([k,l])=>`<button data-act="exper" data-k="${k}" aria-pressed="${kind===k}">${l}</button>`).join("")}</div>
+      <div class="ex-seg" role="group" aria-label="Kỳ báo cáo">${[["week","Tuần"],["month","Tháng"],["year","Năm"]].map(([k,l])=>`<button data-act="exper" data-k="${k}" aria-pressed="${kind===k}">${l}</button>`).join("")}</div>
       ${scopeToggleHtml()}
-      <button class="btn icon" data-act="exrefresh" title="Làm mới" aria-label="Làm mới">${ICONS.refresh}</button></div></div>`;
+      <button class="btn icon" data-act="exrefresh" title="Làm mới" aria-label="Làm mới">${ICONS.refresh}</button></div></section>`;
   // KPI row
   h += `<div class="ex-kpis">
     <div class="ex-card"><h4>Công việc đang thực hiện</h4><div class="ex-k"><div class="ex-ico info">${ICONS.task}</div><div><div><span class="ex-big">${inProgressN}</span></div>
@@ -139,6 +162,7 @@ function viewExec(){
     <div class="ex-card"><h4>Mức sử dụng phòng</h4><div class="ex-donut">${donut([{v:Math.min(U,1),color:U>1?"var(--bad)":U>=.8?"var(--warn)":"var(--ok)",label:"Đã dùng"},{v:Math.max(0,1-U),color:"var(--line-2)",label:"Còn trống"}], pct(U), "", 104)}
       <ul class="ex-list"><li><i style="background:var(--bad)"></i>&gt; 100%: ${over} người</li><li><i style="background:var(--warn)"></i>80 – 100%: ${high} người</li><li><i style="background:var(--ok)"></i>&lt; 80%: ${low} người</li>${none?`<li><i style="background:var(--grey)"></i>Chưa nhập: ${none} người</li>`:""}</ul></div></div>
   </div>`;
+  h += `<section class="ex-card" style="margin-bottom:12px"><div class="ex-h"><h3>KẾT QUẢ HOÀN THÀNH TRONG KỲ</h3></div>${exCompletionHtml(T,P.weeks,simAs)}<div class="small muted" style="margin-top:8px">Đánh giá theo ngày kết thúc thực tế (Kế hoạch thực tế) so với Kế hoạch theo HĐ, giống cột "Đánh giá" ở Kế hoạch dự án. Việc chưa đủ ngày được tách riêng.</div></section>`;
   // Row 2: CÔNG VIỆC ĐANG THỰC HIỆN – bảng đầy đủ, có tìm kiếm + cột Rủi ro
   const pr = S.exPr || "Tất cả";
   const prRank = {"Cao":1,"Bình thường":2,"Thấp":3};
@@ -152,10 +176,10 @@ function viewExec(){
       && (!q || t.dv.toLowerCase().includes(q) || t.p.name.toLowerCase().includes(q) || (t.owner||"").toLowerCase().includes(q)))
     .sort((a,b)=>(b.ms||0)-(a.ms||0) || (prRank[a.pr]||9)-(prRank[b.pr]||9) || String(a.deadline||"9999").localeCompare(String(b.deadline||"9999")));
   h += `<div class="ex-row ex-r2" style="grid-template-columns:1fr">
-    <div class="ex-card"><div class="ex-h"><h3>CÔNG VIỆC ĐANG THỰC HIỆN</h3>
-      <input type="search" data-act="exq" value="${esc(S.exQ||"")}" placeholder="Tìm công việc, dự án, người phụ trách…" style="flex:1; min-width:180px; max-width:360px">
+    <div class="ex-card"><div class="ex-h"><div class="ex-task-heading"><h3>CÔNG VIỆC ĐANG THỰC HIỆN</h3>
+      <input class="inp ex-task-search" type="search" data-act="exq" value="${esc(S.exQ||"")}" placeholder="Tìm công việc, dự án, người phụ trách…" aria-label="Tìm công việc, dự án, người phụ trách"></div>
       <div class="ex-chips" role="group" aria-label="Lọc ưu tiên">${["Tất cả",...TASK_PR].map(x=>`<button data-act="expr" data-p="${x}" aria-pressed="${pr===x}">${x}</button>`).join("")}</div></div>
-      <div class="ex-scroll"><table class="ex-t" style="table-layout:fixed"><thead><tr><th class="c" style="width:3%">#</th><th style="width:27%">Công việc</th><th style="width:9%">Dự án</th><th style="width:9%">Phụ trách</th><th class="c" style="width:6%">Quy mô</th><th class="c" style="width:8%">Độ phức tạp</th><th class="c" style="width:8%">Workload</th><th class="c" style="width:6%">Ưu tiên</th><th class="c" style="width:5%">Hạn</th><th class="c" style="width:6%">Ma sát</th><th class="c" style="width:7%">Rủi ro</th><th class="c" style="width:6%">Trạng thái</th></tr></thead><tbody>
+      <div class="ex-scroll"><table class="ex-t ex-t-fix" style="min-width:1160px"><colgroup><col style="width:3%"><col style="width:19%"><col style="width:13%"><col style="width:10%"><col style="width:6%"><col style="width:7%"><col style="width:7%"><col style="width:8%"><col style="width:6%"><col style="width:8%"><col style="width:6%"><col style="width:7%"></colgroup><thead><tr><th class="c">#</th><th>Công việc</th><th>Dự án</th><th>Phụ trách</th><th class="c">Quy mô</th><th class="c">Độ phức tạp</th><th class="c">Workload</th><th class="c">Ưu tiên</th><th class="c">Hạn</th><th class="c">Ma sát</th><th class="c">Rủi ro</th><th class="c">Trạng thái</th></tr></thead><tbody>
       ${list.map((t,i)=>{ const r=taskRisk(t); return `<tr><td class="c">${i+1}</td><td class="w">${esc(t.dv.replace(/^[0-9A-Z]{1,2}\d?\.\s*[^–]*–\s*/,""))}</td><td class="w2">${esc(t.p.name)}</td><td class="w2">${esc(t.owner||"–")}</td>
         <td class="c">${t.qmE??"–"}</td><td class="c">${t.ptE??"–"}</td><td class="c"><b>${t.wl??"–"}</b></td><td class="c">${t.pr?`<span class="ex-tag ${prTagCls[t.pr]||"tg-gry"}">${esc(t.pr)}</span>`:"–"}</td>
         <td class="c${isLate(t)?" late":""}">${t.deadline?dm(t.deadline):"–"}</td>

@@ -19,6 +19,11 @@
   --side:#193552; --side-ink:#D6E3EF; --side-icon:#A9C0D7; --side-grp-ink:#A9C0D7; --side-line:#2B4560;
   /* Header: cùng màu với sidebar (--side), tách riêng khỏi --surface (thẻ/bảng vẫn trắng) */
   --header-bg:var(--side); --header-ink:#FFFFFF; --header-icon:#D6E3EF; --header-hover:rgba(255,255,255,.12);
+  /* Header ảnh nền + banner lời chào Dashboard (tham khảo Portal NGSI): 2 nấc trong suốt của màu header phủ lên
+     ảnh img/header-bg.jpg; --hero-bg là lớp phủ trắng → trong suốt để chữ lời chào luôn đọc rõ */
+  --hd-mid:rgba(25,53,82,.72); --hd-end:rgba(25,53,82,.35);
+  --hero-bg:linear-gradient(90deg,#FFFFFF 0,#FFFFFF 26%,rgba(255,255,255,.6) 48%,rgba(255,255,255,0) 72%);
+  --slogan:#1E3A8A; --slogan-line:#2EAD59;
   --side-hover-bg:#244563; --side-hover-ink:#FFFFFF;
   --side-active-bg:#176D78; --side-active-ink:#FFFFFF; --side-active-bar:#20A6C2;
   /* --teal = accent tương tác chính (Electric Cyan) – dùng cho nút chính, link, thanh tiến độ, focus ring */
@@ -45,6 +50,9 @@
     --teal:#35B3AE; --teal-hover:#2B918D; --teal-soft:#16393A; --indigo:#8C9BE0; --ochre:#E0A94A; --grey:#8E99A8;
     --ok:#55C08A; --ok-soft:#173526; --warn:#E6AA3A; --warn-soft:#3A2E14; --bad:#EE6A5B; --bad-soft:#3E1D1A;
     --info:#6FA2F2; --info-soft:#15263F;
+    --hd-mid:rgba(11,17,24,.78); --hd-end:rgba(11,17,24,.5);
+    --hero-bg:linear-gradient(90deg,#18212C 0,#18212C 30%,rgba(24,33,44,.82) 55%,rgba(24,33,44,.6) 100%);
+    --slogan:#9CC3FF; --slogan-line:#55C08A;
   }
 }
 :root[data-theme="dark"]{
@@ -57,4 +65,7 @@
   --teal:#35B3AE; --teal-hover:#2B918D; --teal-soft:#16393A; --indigo:#8C9BE0; --ochre:#E0A94A; --grey:#8E99A8;
   --ok:#55C08A; --ok-soft:#173526; --warn:#E6AA3A; --warn-soft:#3A2E14; --bad:#EE6A5B; --bad-soft:#3E1D1A;
   --info:#6FA2F2; --info-soft:#15263F;
+    --hd-mid:rgba(11,17,24,.78); --hd-end:rgba(11,17,24,.5);
+    --hero-bg:linear-gradient(90deg,#18212C 0,#18212C 30%,rgba(24,33,44,.82) 55%,rgba(24,33,44,.6) 100%);
+    --slogan:#9CC3FF; --slogan-line:#55C08A;
 }

@@ -1,6 +1,25 @@
 /* DASHBOARD – riêng cho màn hình Dashboard (tiền tố .ex-*). Toàn bộ màu lấy từ token chung trong theme.css */
 /* ================= executive dashboard ================= */
 .ex-ctl{display:flex; gap:10px; align-items:center; flex-wrap:wrap; min-width:0}
+/* Banner lời chào đầu Dashboard (tham khảo .pt-hero của Portal NGSI): trái = lời chào 2 dòng, phải = slogan
+   ở trên + bộ chọn kỳ ở dưới; ảnh nền núi dùng chung với header, phủ --hero-bg để chữ luôn đọc rõ */
+.ex-hero{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,560px); grid-template-areas:"l s" "l c"; align-items:center; gap:10px 24px;
+  padding:20px 24px; min-height:120px; margin-bottom:16px; border-radius:16px; border:1px solid var(--line);
+  background:var(--hero-bg),url("../img/header-bg.jpg") right 40% / cover no-repeat; box-shadow:0 1px 2px rgba(16,42,67,.05),0 4px 14px rgba(16,42,67,.05)}
+.ex-hero-l{grid-area:l; display:flex; align-items:center; gap:16px; min-width:0}
+.ex-wave{font-size:40px; line-height:1}
+.ex-hero h1{margin:0; font-size:clamp(22px,1.75vw,28px); font-weight:700; color:var(--ink); letter-spacing:-.01em}
+.ex-hero p{margin:4px 0 0; color:var(--ink-2); font-size:14px; display:flex; flex-wrap:wrap; align-items:center; gap:6px}
+.ex-hero p b{color:var(--ink); font-weight:600}
+.ex-hero .pill{margin-left:6px}
+.ex-dot{color:var(--ink-3)}
+.ex-slogan{grid-area:s; justify-self:center; text-align:center; font-family:"Dancing Script",cursive; font-weight:600; font-size:40px; line-height:1; color:var(--slogan); white-space:nowrap}
+.ex-slogan svg{display:block; width:72%; height:12px; margin:2px auto 0; color:var(--slogan-line)}
+.ex-hero .ex-ctl{grid-area:c; justify-content:flex-end; row-gap:8px}
+.ex-hero .ex-wk,.ex-hero .ex-seg{box-shadow:0 1px 2px rgba(16,42,67,.08)}
+.ex-hero .ex-seg button[aria-pressed="true"]{background:var(--teal-hover); color:#fff}
+@media (max-width:1100px){ .ex-hero{grid-template-columns:minmax(0,1fr); grid-template-areas:"l" "s" "c"} .ex-slogan{justify-self:start} .ex-hero .ex-ctl{justify-content:flex-start} }
+@media (max-width:760px){ .ex-hero{padding:16px} .ex-slogan{font-size:32px; white-space:normal} .ex-wave{font-size:30px} }
 .ex-wk{display:flex; align-items:center; gap:4px; background:var(--surface); border:1px solid var(--line); border-radius:9px; padding:3px; min-width:0}
 .ex-wk button{all:unset; cursor:pointer; padding:5px 9px; border-radius:6px; color:var(--ink)}
 .ex-wk button:hover{background:var(--hover)}
@@ -31,6 +50,9 @@
 .ex-h{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; flex-wrap:wrap}
 .ex-h h3{font-size:14px; font-weight:800; letter-spacing:.01em; margin:0}
 .ex-h .lnk{all:unset; cursor:pointer; color:var(--teal-hover); font-size:12.5px; font-weight:600}
+.ex-task-heading{display:flex; align-items:center; flex:1; min-width:0; gap:20px; flex-wrap:wrap}
+.ex-task-heading .ex-task-search{width:360px; max-width:100%; margin:0}
+@media (max-width:640px){.ex-task-heading{flex-basis:100%; gap:10px} .ex-task-heading .ex-task-search{width:100%}}
 .ex-t{width:100%; border-collapse:collapse; font-size:12.5px}
 .ex-t th{font-size:11.5px; color:var(--ink-2); font-weight:700; background:var(--line-2); padding:10px 12px; border-bottom:1px solid var(--line); position:static; white-space:normal; line-height:1.25}
 .ex-t td{padding:10px 12px; border-bottom:1px solid var(--line-2); vertical-align:middle; white-space:nowrap}
@@ -38,6 +60,12 @@
 .ex-t td.w2{white-space:normal; min-width:84px}
 .ex-t td.c,.ex-t th.c{text-align:center}
 .ex-t td.late{color:var(--bad); font-weight:700}
+/* Bảng "Công việc đang thực hiện": tỷ lệ cột cố định (colgroup), không co giãn theo nội dung; hẹp màn hình thì cuộn ngang */
+.ex-t-fix{table-layout:fixed; min-width:1040px}
+.ex-t-fix th,.ex-t-fix td{padding:10px 8px; overflow-wrap:anywhere}
+.ex-t-fix th{white-space:nowrap}
+.ex-t-fix td{white-space:normal}
+.ex-t-fix td.w,.ex-t-fix td.w2{min-width:0}
 .ex-scroll{max-height:372px; overflow:auto}
 .ex-ubar{display:flex; align-items:center; gap:8px}
 .ex-ubar .t{flex:1; height:12px; background:var(--line-2); border-radius:3px; overflow:hidden; min-width:60px}
