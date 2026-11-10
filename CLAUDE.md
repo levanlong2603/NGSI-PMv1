@@ -192,7 +192,9 @@ PM sau này bám đúng thực tế):
 ## Màn hình hiện có
 Lõi (`frontend/js/views/`): Dashboard (`exec-dashboard.js`), Tổng quan dự án – chỉ xem (`project-overview.js`),
 Tải tuần (`weekly-load.js`), Nhập theo tuần (`weekly-input.js`), Kế hoạch dự án (`plan.js`), Cài đặt
-(`settings.js`), Hướng dẫn (`help.js`).
+(`settings.js`). Mục "Hướng dẫn" (`help.js`) **đã xoá hẳn** theo yêu cầu người dùng (giống web Kỹ thuật
+NGSI-TMv1): bỏ khỏi `VIEWS`, `index.html`, CSS `.help-*`; `state.js` đổi `store("view")==="help"` cũ → Dashboard.
+`config/help` (nếu còn trong CSDL) chỉ còn được `server.js` đọc vào `S.help`, không nơi nào hiển thị.
 **"Việc trong tuần" = 1 mục menu, 3 tab** (đồng bộ nguyên từ `ptkt-appv1`, theo yêu cầu người dùng): Tải tuần /
 Đầu việc / Lịch (`.rp-tabs`, `weekTabs()`/`viewWeek()`/`ACTIONS["weektab"]` cuối `weekly-input.js`, state `S.weekTab`
 = `"load"|"tasks"|"calendar"`; mặc định `S.canEdit` → Tải tuần, nhân viên → Đầu việc). Mục menu `"load"` riêng ĐÃ
@@ -806,11 +808,12 @@ nút `+`/`✕` mỗi dòng (`ACTIONS["addcatrow"]`/`["delcatrow"]`) chèn/xoá n
   `constants.js`, `events.js`, `server.js` của 2 dự án đã rẽ nhánh nghiệp vụ, không so để đồng bộ), và
   không đổi lại `<title>`/`.topbar-app` về "Technical Department". Lần sau muốn đồng bộ tiếp UI mới từ
   `ptkt-appv1`, diff riêng từng file CSS/HTML thuần hiển thị, không diff/chép các file đã rẽ nhánh nghiệp vụ
-  kể trên. **Đã rẽ nhánh khỏi bản gốc 1 chỗ sau lần đồng bộ**: bề rộng cột sidebar đổi `196px`→`224px`
-  (`.app`/`.side-head` ở `base.css`, + `max-width` nhãn menu `160px`→`188px`) để có chỗ cho mục menu xổ mục
-  con (`.nav-sub`, xem mục "Cách mở rộng" → "Mục menu trái xổ ra mục con") không bị vỡ chữ – **đừng** copy
-  đè lại đúng 196px từ `ptkt-appv1` nếu đồng bộ `base.css` tiếp, trừ khi `ptkt-appv1` cũng đã có nhu cầu
-  tương tự và đổi theo.
+  kể trên. **Đồng bộ lại theo web Kỹ thuật (NGSI-TMv1) lần 2** – người dùng chọn giao diện TM làm chuẩn cho
+  cả 2 web: bề rộng cột sidebar trả về `196px` (`.app`/`.side-head`, `max-width` nhãn menu `160px` – từng nới
+  lên `224px`/`188px` cho menu xổ mục con, nay không còn mục nào dùng `children`), thông báo `.toast` hiện
+  GIỮA màn hình như TM (trước ở đáy), Dashboard dùng đúng tỷ lệ khung của TM (`.ex-r3` 1:2, `.ex-r4` 1:1,
+  tiêu đề bảng `.ex-t th` được xuống dòng, bỏ mốc `@media (max-width:1280px)`). Nếu sau này lại cần menu xổ
+  mục con, nới lại bề rộng cho CẢ 2 web cùng lúc để giữ đồng bộ.
 - **Đồng bộ toàn bộ trang "Góp ý" từ `ptkt-appv1`** (lần này đồng bộ cả tính năng, không chỉ hiển thị,
   theo yêu cầu người dùng): `frontend/js/modules/feedback.js` nay có thêm (1) **Sửa góp ý** (chỉ người viết/
   admin hệ thống – trưởng phòng/phó phòng không còn sửa/xoá được góp ý người khác, chỉ còn đổi **trạng thái

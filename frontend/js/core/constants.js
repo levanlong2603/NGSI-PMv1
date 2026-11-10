@@ -148,8 +148,7 @@ const VIEWS = [
   {id:"dash", label:"Dự án", icon:"dash"},
   {id:"input", label:"Việc trong tuần", icon:"input"}, // gồm 3 tab: Tải tuần (weekly-load.js) | Đầu việc (weekly-input.js) | Lịch (modules/calendar.js) – xem viewWeek()
   {sep:true},
-  {id:"settings", label:"Cài đặt", icon:"set"},
-  {id:"help", label:"Hướng dẫn", icon:"help"}
+  {id:"settings", label:"Cài đặt", icon:"set"}
 ];
 
 

@@ -18,7 +18,7 @@ button,input,select,textarea{font:inherit; color:inherit}
 *::-webkit-scrollbar-track{background:transparent}
 *::-webkit-scrollbar-thumb{background:var(--line); border-radius:3px}
 *::-webkit-scrollbar-thumb:hover{background:var(--ink-3)}
-.app{display:grid; grid-template-columns:224px minmax(0,1fr); height:calc(100% - var(--header-h)); margin-top:var(--header-h); transition:grid-template-columns .15s ease}
+.app{display:grid; grid-template-columns:196px minmax(0,1fr); height:calc(100% - var(--header-h)); margin-top:var(--header-h); transition:grid-template-columns .15s ease}
 @media (min-width:861px){ body.side-collapsed .app{grid-template-columns:60px minmax(0,1fr)} }
 main,.page,.stack,.grid2>*,.split>*,.prow,.prow>*,.lrow,.lrow>*,.me-sum>*,.toolbar>*{min-width:0}
 /* ---------- topbar (header cố định) ---------- */
@@ -60,8 +60,8 @@ main,.page,.stack,.grid2>*,.split>*,.prow,.prow>*,.lrow,.lrow>*,.me-sum>*,.toolb
 .side{background:var(--side); color:var(--side-ink); display:flex; flex-direction:column; padding:14px 10px 16px; position:sticky; top:var(--header-h); height:calc(100vh - var(--header-h)); overflow:auto; border-right:1px solid var(--side-line); transition:width .15s ease}
 /* Đặt đè lên hàng của nhãn nhóm đầu tiên (.nav-grp:first-child) thay vì chiếm riêng 1 hàng phía trên */
 /* Nút thu gọn/mở rộng = nút TRÒN nổi, luôn nằm đúng lề phải của sidebar (tâm nút nằm trên đường viền; kiểu S-Link).
-   position:fixed để không bị overflow của .side cắt; left bám theo bề rộng cột menu (224px / 60px khi thu gọn). */
-.side-head{position:fixed; top:calc(var(--header-h) + 14px); left:calc(224px - 14px); z-index:6; transition:left .15s ease}
+   position:fixed để không bị overflow của .side cắt; left bám theo bề rộng cột menu (196px / 60px khi thu gọn). */
+.side-head{position:fixed; top:calc(var(--header-h) + 14px); left:calc(196px - 14px); z-index:6; transition:left .15s ease}
 body.side-collapsed .side-head{left:calc(60px - 14px)}
 .side-toggle{all:unset; cursor:pointer; box-sizing:border-box; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center;
   background:var(--surface); color:var(--ink-2); border:1px solid var(--line); box-shadow:0 2px 8px rgba(10,18,28,.18); flex:none}
@@ -106,7 +106,7 @@ body.side-collapsed .nav-grp .ab{display:inline}
 .nav{display:flex; flex-direction:column; gap:1px}
 .nav button{all:unset; cursor:pointer; display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:8px; font-size:14px; color:var(--side-ink); border-left:3px solid transparent; transition:padding .15s ease, gap .15s ease}
 .nav button:hover{background:var(--side-hover-bg); color:var(--side-hover-ink)}
-.nav button span:not(.nav-badge){overflow:hidden; white-space:nowrap; text-overflow:ellipsis; opacity:1; max-width:188px; transition:opacity .1s ease, max-width .15s ease}
+.nav button span:not(.nav-badge){overflow:hidden; white-space:nowrap; text-overflow:ellipsis; opacity:1; max-width:160px; transition:opacity .1s ease, max-width .15s ease}
 body.side-collapsed .nav button span:not(.nav-badge){opacity:0; max-width:0}
 .nav button[aria-current="page"]{background:var(--side-active-bg); color:var(--side-active-ink); font-weight:600; border-left-color:var(--side-active-bar)}
 .nav button:focus-visible{outline:2px solid var(--focus)}
@@ -159,15 +159,6 @@ h3{font-size:14px; font-weight:600; margin:0}
 .panel-b{padding:14px 18px}
 .data-ico{width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex:none}
 .data-ico svg{width:19px; height:19px}
-/* Trang Hướng dẫn: nội dung tự soạn (xem help.js) – h2/h3 reset về margin:0 ở trên cần giãn lại riêng
-   trong khung này, dùng chung cho cả lúc xem (.help-view) lẫn lúc sửa (.help-editor, contenteditable). */
-.help-view h2,.help-editor h2{font-size:16px; margin:20px 0 8px}
-.help-view h2:first-child,.help-editor h2:first-child{margin-top:0}
-.help-view h3,.help-editor h3{font-size:14px; color:var(--teal-hover); margin:14px 0 6px}
-.help-view p,.help-editor p{margin:0 0 8px; line-height:1.55}
-.help-view b,.help-editor b{color:var(--ink)}
-.help-editor{min-height:260px; border:1px solid var(--line); border-radius:8px; padding:12px 16px; outline:none}
-.help-editor:focus{border-color:var(--teal)}
 .data-t{font-weight:700; font-size:15px}
 .btn svg{width:14px; height:14px; flex:none}
 .grid2{display:grid; grid-template-columns:minmax(0,1.9fr) minmax(300px,1fr); gap:18px; align-items:start}
@@ -283,7 +274,7 @@ textarea.inp{min-height:74px; resize:vertical}
 .search-dd-empty{padding:10px 9px; color:var(--ink-3); font-size:13px}
 .search-dd .search-dd-free{color:var(--teal-hover); font-weight:600; border-top:1px dashed var(--line); border-radius:0 0 6px 6px}
 .row2{display:grid; grid-template-columns:1fr 1fr; gap:12px}
-.toast{position:fixed; left:50%; bottom:calc(20px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); background:var(--ink); color:var(--surface); padding:9px 16px; border-radius:9px; font-size:13.5px; z-index:40; box-shadow:0 6px 20px rgba(0,0,0,.2)}
+.toast{position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); max-width:calc(100vw - 32px); text-align:center; background:var(--ink); color:var(--surface); padding:9px 16px; border-radius:9px; font-size:13.5px; z-index:40; box-shadow:0 6px 20px rgba(0,0,0,.2)}
 .empty{padding:34px 18px; text-align:center; color:var(--ink-3)}
 .empty b{display:block; color:var(--ink); font-size:15px; margin-bottom:4px}
 .banner{background:var(--warn-soft); color:var(--ink); border:1px solid color-mix(in srgb,var(--warn) 40%, transparent); border-radius:10px; padding:10px 14px; margin-bottom:16px; font-size:13.5px}
