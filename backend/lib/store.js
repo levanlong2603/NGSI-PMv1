@@ -25,6 +25,13 @@ function createMariaStore() {
     charset: "utf8mb4_unicode_ci",
     connectionLimit: Number(process.env.DB_POOL) || 10,
     waitForConnections: true,
+    /* Kết nối CSDL đi qua FortiGate (NAT): phiên TCP rảnh quá 3600 giây bị FortiGate xoá âm thầm, truy vấn sau đó
+       treo rất lâu (đăng nhập/tải trang "lag" sau một thời gian không ai dùng). Keepalive mặc định của Linux là
+       7200 giây – quá muộn – nên tự gửi keepalive sau 30 giây rảnh, và đóng bớt kết nối rảnh sau 60 giây. */
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 30000,
+    maxIdle: 2,
+    idleTimeout: 60000,
     supportBigNumbers: true,
     bigNumberStrings: false,
     dateStrings: true,
